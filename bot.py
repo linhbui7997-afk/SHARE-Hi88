@@ -244,7 +244,7 @@ async def buy(call: CallbackQuery, state: FSMContext):
     text = (
         f"🎁 <b>KM SHARE</b>\n\n"
         f"🚀 <b>{esc(PRODUCT_LABEL)}</b>\n"
-        f"💰 Giá đơn: <b>{money(price)}</b>\n\n"
+        f"💰 Giá đơn: <b>{money(await current_price())}</b>\n\n"
         f"⚙️ <b>ĐIỀU KIỆN NHẬN THƯỞNG</b>\n"
         f"• Tài khoản không lạm dụng.\n"
         f"• Không hoàn tiền nếu tài khoản bị xác định lạm dụng theo điều khoản.\n"
