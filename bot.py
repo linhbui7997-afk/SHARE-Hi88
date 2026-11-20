@@ -657,10 +657,13 @@ async def stk_label(message: Message, state: FSMContext):
 
 
 async def sepay_webhook(request: web.Request):
-    if SEPAY_API_KEY:
-        auth = request.headers.get("Authorization", "")
-        if auth != f"Apikey {SEPAY_API_KEY}":
-            return web.json_response({"success": False}, status=401)
+    # Fail closed: never accept payment callbacks without a configured shared secret.
+    if not SEPAY_API_KEY:
+        log.error("SEPAY_API_KEY is not configured; webhook disabled")
+        return web.json_response({"success": False, "error": "webhook_not_configured"}, status=503)
+    auth = request.headers.get("Authorization", "")
+    if auth != f"Apikey {SEPAY_API_KEY}":
+        return web.json_response({"success": False}, status=401)
     try:
         payload = await request.json()
         sepay_id = str(payload["id"])
