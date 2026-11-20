@@ -531,7 +531,7 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
         return await call.answer()
     elif action == "adm_price":
         await state.set_state(AdminPriceForm.price)
-        await call.message.edit_text(f"🏷️ Giá hiện tại: {money(PRODUCT_PRICE)}\nNhập giá mới bằng VNĐ:", reply_markup=back_kb())
+        await call.message.edit_text(f"🏷️ Giá hiện tại: {money(await current_price())}\nNhập giá mới bằng VNĐ:", reply_markup=back_kb())
         return await call.answer()
     elif action == "adm_stks":
         slots = []
@@ -617,7 +617,7 @@ async def admin_set_price(message: Message, state: FSMContext):
         return await message.answer("Giá không hợp lệ.")
     await set_setting("product_price_vnd", raw)
     await state.clear()
-    await message.answer(f"✅ Đã lưu giá mới: {money(int(raw))}. Khởi động lại bot để nạp cấu hình mới.")
+    await message.answer(f"✅ Đã lưu giá mới: {money(int(raw))}. Giá mới được áp dụng cho đơn tiếp theo.")
 
 
 @dp.message(Command("setstk"))
