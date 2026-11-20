@@ -168,19 +168,22 @@ async def home_text(user):
     row = await get_user(user.id)
     wallet = row["wallet"] if row else 0
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("SELECT COUNT(*) FROM orders WHERE user_id=? AND status IN ('pending','processing')", (user.id,))
+        cur = await db.execute(
+            "SELECT COUNT(*) FROM orders WHERE user_id=? AND status IN ('pending','processing')",
+            (user.id,)
+        )
         waiting = (await cur.fetchone())[0]
+
+    now = datetime.now(TZ)
+    date_text = now.strftime("%d/%m/%y")
+    time_text = now.strftime("%H:%M:%S")
+    username = f"@{esc(user.username)}" if user.username else "Chưa đặt username"
     return (
-        f"💎 <b>KM SHARE HI88</b>\n"
-        f"📅 {now_text()} (GMT+7)\n\n"
-        f"💳 <b>SỐ DƯ VÍ: {money(wallet)}</b>\n"
-        f"🪪 • ID: <code>{user.id}</code>\n"
-        f"👤 • @{esc(user.username) if user.username else 'chưa_có_username'}\n\n"
-        f"📌 <b>MENU</b>\n"
-        f"🎁 KM SHARE  •  💳 NẠP TIỀN\n"
-        f"📊 Lịch sử giao dịch gồm lịch sử đơn hàng và lịch nạp tiền\n\n"
-        f"⏳ <b>Đơn hàng:</b> {waiting} đơn chờ\n"
-        f"🔄 <b>Trạng thái:</b> {'Đang xử lý' if waiting else 'Không có đơn chờ'}"
+        f"📆 {date_text}   ⏰ {time_text} (GMT+7)\\n"
+        f"💬 Xin chào, {username}\\n"
+        f"⊕ Số Dư Ví : <b>{money(wallet)}</b>\\n"
+        f"✐ ID : <code>{user.id}</code> ₊ USER\\n"
+        f"⏳ Đơn Hàng : <b>{waiting}</b> (đang xử lý)"
     )
 
 
