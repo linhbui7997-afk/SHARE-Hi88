@@ -156,6 +156,13 @@ def is_admin(user_id):
     return user_id in ADMIN_IDS
 
 
+async def current_price():
+    try:
+        return int(await setting('product_price_vnd', str(PRODUCT_PRICE)))
+    except (TypeError, ValueError):
+        return PRODUCT_PRICE
+
+
 async def home_text(user):
     row = await get_user(user.id)
     wallet = row["wallet"] if row else 0
@@ -237,7 +244,7 @@ async def buy(call: CallbackQuery, state: FSMContext):
     text = (
         f"🎁 <b>KM SHARE</b>\n\n"
         f"🚀 <b>{esc(PRODUCT_LABEL)}</b>\n"
-        f"💰 Giá đơn: <b>{money(PRODUCT_PRICE)}</b>\n\n"
+        f"💰 Giá đơn: <b>{money(await current_price())}</b>\n\n"
         f"⚙️ <b>ĐIỀU KIỆN NHẬN THƯỞNG</b>\n"
         f"• Tài khoản không lạm dụng.\n"
         f"• Không hoàn tiền nếu tài khoản bị xác định lạm dụng theo điều khoản.\n"
@@ -297,10 +304,10 @@ async def order_stk(message: Message, state: FSMContext):
         return await message.answer("⚠️ Vui lòng nhập đúng 4 chữ số cuối của STK.")
     data = await state.get_data()
     row = await get_user(message.from_user.id)
-    if not row or row["wallet"] < PRODUCT_PRICE:
+    if not row or row["wallet"] < await current_price():
         await state.clear()
         return await message.answer(
-            f"💳 Số dư không đủ. Giá đơn {money(PRODUCT_PRICE)}.\nVui lòng nạp tiền trước.",
+            f"💳 Số dư không đủ. Giá đơn {money(await current_price())}.\nVui lòng nạp tiền trước.",
             reply_markup=main_kb()
         )
     async with aiosqlite.connect(DB_PATH) as db:
@@ -327,7 +334,7 @@ async def order_stk(message: Message, state: FSMContext):
         order_id = cur.lastrowid
         await db.execute(
             "INSERT INTO transactions(user_id,kind,amount,note,created_at,ref) VALUES(?,?,?,?,?,?)",
-            (message.from_user.id, "order_payment", -PRODUCT_PRICE, "Thanh toán đơn HI88", now_text(), f"ORD-{order_id:06d}")
+            (message.from_user.id, "order_payment", -(await current_price()), "Thanh toán đơn HI88", now_text(), f"ORD-{order_id:06d}")
         )
         await db.commit()
     await state.clear()
