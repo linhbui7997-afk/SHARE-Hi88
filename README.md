@@ -14,7 +14,7 @@ Telegram bot starter for the agreed customer and admin flows.
 ## Railway setup
 1. Create a Railway service from this repository, branch `main`.
 2. Add variables from `.env.example` in Railway Variables.
-3. Set `BOT_TOKEN` from BotFather and `ADMIN_IDS` to the numeric Telegram ID(s) of Admin. Never commit secrets.
+3. Set `BOT_TOKEN` from BotFather. `MAIN_ADMIN_ID` defaults to `6369714149`; add any additional Admin IDs in `ADMIN_IDS` as comma-separated numeric IDs. Never commit secrets.
 4. Set `DATABASE_PATH=/data/share_hi88.sqlite3` and mount a persistent Railway volume at `/data`.
 5. Configure bank details and a long random `SEPAY_API_KEY`.
 6. Deploy; health endpoint is `/health`.
