@@ -244,7 +244,7 @@ async def buy(call: CallbackQuery, state: FSMContext):
     text = (
         f"🎁 <b>KM SHARE</b>\n\n"
         f"🚀 <b>{esc(PRODUCT_LABEL)}</b>\n"
-        f"💰 Giá đơn: <b>{money(await current_price())}</b>\n\n"
+        f"💰 Giá đơn: <b>{money(price)}</b>\n\n"
         f"⚙️ <b>ĐIỀU KIỆN NHẬN THƯỞNG</b>\n"
         f"• Tài khoản không lạm dụng.\n"
         f"• Không hoàn tiền nếu tài khoản bị xác định lạm dụng theo điều khoản.\n"
@@ -305,7 +305,7 @@ async def order_stk(message: Message, state: FSMContext):
     data = await state.get_data()
     price = await current_price()
     row = await get_user(message.from_user.id)
-    if not row or row["wallet"] < await current_price():
+    if not row or row["wallet"] < price:
         await state.clear()
         return await message.answer(
             f"💳 Số dư không đủ. Giá đơn {money(await current_price())}.\nVui lòng nạp tiền trước.",
@@ -335,7 +335,7 @@ async def order_stk(message: Message, state: FSMContext):
         order_id = cur.lastrowid
         await db.execute(
             "INSERT INTO transactions(user_id,kind,amount,note,created_at,ref) VALUES(?,?,?,?,?,?)",
-            (message.from_user.id, "order_payment", -(await current_price()), "Thanh toán đơn HI88", now_text(), f"ORD-{order_id:06d}")
+            (message.from_user.id, "order_payment", -price, "Thanh toán đơn HI88", now_text(), f"ORD-{order_id:06d}")
         )
         await db.commit()
     await state.clear()
@@ -357,7 +357,7 @@ async def order_stk(message: Message, state: FSMContext):
                 f"User: <code>{message.from_user.id}</code>\n"
                 f"Tài khoản: {esc(data['account_name'])}\n"
                 f"4 số cuối STK: <code>{digits}</code>\n"
-                f"Giá: {money(PRODUCT_PRICE)}",
+                f"Giá: {money(price)}",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="🔄 Đánh dấu đang xử lý", callback_data=f"ordproc:{order_id}")],
                     [InlineKeyboardButton(text="✅ Hoàn thành", callback_data=f"orddone:{order_id}")],
