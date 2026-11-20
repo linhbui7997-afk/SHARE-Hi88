@@ -303,6 +303,7 @@ async def order_stk(message: Message, state: FSMContext):
     if len(digits) != 4:
         return await message.answer("⚠️ Vui lòng nhập đúng 4 chữ số cuối của STK.")
     data = await state.get_data()
+    price = await current_price()
     row = await get_user(message.from_user.id)
     if not row or row["wallet"] < await current_price():
         await state.clear()
@@ -322,14 +323,14 @@ async def order_stk(message: Message, state: FSMContext):
         await db.execute("BEGIN IMMEDIATE")
         cur = await db.execute("SELECT wallet FROM users WHERE user_id=?", (message.from_user.id,))
         current = (await cur.fetchone())[0]
-        if current < PRODUCT_PRICE:
+        if current < price:
             await db.rollback()
             await state.clear()
             return await message.answer("💳 Số dư không đủ. Vui lòng nạp tiền.", reply_markup=main_kb())
-        await db.execute("UPDATE users SET wallet=wallet-? WHERE user_id=?", (PRODUCT_PRICE, message.from_user.id))
+        await db.execute("UPDATE users SET wallet=wallet-? WHERE user_id=?", (price, message.from_user.id))
         cur = await db.execute(
             "INSERT INTO orders(user_id,product,account_name,stk_last4,price,status,created_at,updated_at) VALUES(?,?,?,?,?,'pending',?,?)",
-            (message.from_user.id, PRODUCT_NAME, data["account_name"], digits, PRODUCT_PRICE, now_text(), now_text())
+            (message.from_user.id, PRODUCT_NAME, data["account_name"], digits, price, now_text(), now_text())
         )
         order_id = cur.lastrowid
         await db.execute(
@@ -344,7 +345,7 @@ async def order_stk(message: Message, state: FSMContext):
         f"🎁 Sản phẩm: {esc(PRODUCT_LABEL)}\n"
         f"👤 Tên tài khoản: {esc(data['account_name'])}\n"
         f"🏦 4 số cuối STK: <code>{digits}</code>\n"
-        f"💰 Đã trừ ví: {money(PRODUCT_PRICE)}\n"
+        f"💰 Đã trừ ví: {money(price)}\n"
         f"⏳ Trạng thái: Chờ Admin xử lý",
         reply_markup=main_kb()
     )
