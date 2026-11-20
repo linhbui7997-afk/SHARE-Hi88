@@ -25,7 +25,8 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 log = logging.getLogger("share-hi88")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-ADMIN_IDS = {int(x.strip()) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip().isdigit()}
+MAIN_ADMIN_ID = int(os.getenv("MAIN_ADMIN_ID", "6369714149"))
+ADMIN_IDS = {MAIN_ADMIN_ID} | {int(x.strip()) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip().isdigit()}
 PORT = int(os.getenv("PORT", "8080"))
 DB_PATH = os.getenv("DATABASE_PATH", "share_hi88.sqlite3")
 PRODUCT_NAME = os.getenv("PRODUCT_NAME", "HI88")
