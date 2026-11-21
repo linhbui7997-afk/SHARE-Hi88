@@ -127,14 +127,17 @@ async def set_setting(key, value):
         await db.commit()
 
 
-def main_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[
+def main_kb(user_id=None):
+    rows = [
         [InlineKeyboardButton(text="🎁 KM SHARE", callback_data="buy")],
         [InlineKeyboardButton(text="💳 NẠP TIỀN", callback_data="deposit")],
         [InlineKeyboardButton(text="📊 LỊCH SỬ GIAO DỊCH", callback_data="history")],
         [InlineKeyboardButton(text="⏳ ĐƠN HÀNG CỦA TÔI", callback_data="myorders")],
         [InlineKeyboardButton(text="🎧 HỖ TRỢ", url=os.getenv("SUPPORT_URL", "https://t.me/"))],
-    ])
+    ]
+    if user_id is not None and is_admin(user_id):
+        rows.append([InlineKeyboardButton(text="👑 BẢNG QUẢN LÍ ADMIN", callback_data="admin_home")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def back_kb():
@@ -177,20 +180,20 @@ async def home_text(user):
     now = datetime.now(TZ)
     date_text = now.strftime("%d/%m/%y")
     time_text = now.strftime("%H:%M:%S")
-    username = f"@{esc(user.username)}" if user.username else "Chưa đặt username"
+    username = f"@{esc(user.username)}" if user.username else esc(user.first_name or "bạn")
     return (
         f"📆 {date_text}   ⏰ {time_text} (GMT+7)\\n"
         f"💬 Xin chào, {username}\\n"
         f"⊕ Số Dư Ví : <b>{money(wallet)}</b>\\n"
-        f"✐ ID : <code>{user.id}</code> ₊ USER\\n"
-        f"⏳ Đơn Hàng : <b>{waiting}</b> (đang xử lý)"
+        f"✐ ID : <code>{user.id}</code>\\n"
+        f"⏳ Đơn Hàng : <b>{waiting}</b>"
     )
 
 
 async def show_home(target, user):
     text = await home_text(user)
     if isinstance(target, CallbackQuery):
-        await target.message.edit_text(text, reply_markup=main_kb())
+        await target.message.edit_text(text, reply_markup=main_kb(user.id))
         await target.answer()
     else:
         await target.answer(text, reply_markup=main_kb())
