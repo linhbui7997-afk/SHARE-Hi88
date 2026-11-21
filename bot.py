@@ -36,9 +36,9 @@ PRODUCT_ACTIVE = os.getenv("PRODUCT_ACTIVE", "true").lower() == "true"
 MIN_TOTAL_DEPOSIT = int(os.getenv("MIN_TOTAL_DEPOSIT_VND", "500000"))
 MIN_DEPOSIT_COUNT = int(os.getenv("MIN_DEPOSIT_COUNT", "3"))
 SEPAY_API_KEY = os.getenv("SEPAY_API_KEY", "")
-SEPAY_BANK = os.getenv("SEPAY_BANK_NAME", "")
-SEPAY_ACCOUNT = os.getenv("SEPAY_ACCOUNT_NUMBER", "")
-SEPAY_ACCOUNT_NAME = os.getenv("SEPAY_ACCOUNT_NAME", "")
+SEPAY_BANK = "ACB"
+SEPAY_ACCOUNT = "28682791"
+SEPAY_ACCOUNT_NAME = "BUI HOANG YEN LINH"
 SEPAY_QR_TEMPLATE = os.getenv("SEPAY_QR_TEMPLATE", "compact2")
 SEPAY_PREFIX = re.sub(r"[^A-Z0-9]", "", os.getenv("SEPAY_CODE_PREFIX", "SH").upper())[:5] or "SH"
 TZ = ZoneInfo("Asia/Ho_Chi_Minh")
@@ -148,12 +148,18 @@ async def set_setting(key, value):
 
 def main_kb(user_id=None):
     rows = [
-        [InlineKeyboardButton(text="🎁 ĐẶT ĐƠN KM SHARE", callback_data="buy")],
-        [InlineKeyboardButton(text="💰 NẠP TIỀN", callback_data="deposit")],
-        [InlineKeyboardButton(text="👤 TÀI KHOẢN", callback_data="account")],
-        [InlineKeyboardButton(text="📜 LỊCH SỬ ĐƠN HÀNG", callback_data="myorders")],
-        [InlineKeyboardButton(text="💳 LỊCH SỬ GIAO DỊCH", callback_data="history")],
-        [InlineKeyboardButton(text="🎧 LIÊN HỆ HỖ TRỢ", url=os.getenv("SUPPORT_URL", "https://t.me/nilatao"))],
+        [
+            InlineKeyboardButton(text="🎁 ĐẶT ĐƠN KM SHARE", callback_data="buy"),
+            InlineKeyboardButton(text="💰 NẠP TIỀN", callback_data="deposit"),
+        ],
+        [
+            InlineKeyboardButton(text="👤 TÀI KHOẢN", callback_data="account"),
+            InlineKeyboardButton(text="📜 LỊCH SỬ ĐƠN HÀNG", callback_data="myorders"),
+        ],
+        [
+            InlineKeyboardButton(text="💳 LỊCH SỬ GIAO DỊCH", callback_data="history"),
+            InlineKeyboardButton(text="🎧 LIÊN HỆ HỖ TRỢ", url=os.getenv("SUPPORT_URL", "https://t.me/nilatao")),
+        ],
     ]
     if user_id is not None and is_admin(user_id):
         rows.append([InlineKeyboardButton(text="👑 BẢNG QUẢN LÝ ADMIN", callback_data="admin_home")])
@@ -170,7 +176,7 @@ def admin_kb():
         [InlineKeyboardButton(text="📦 QUẢN LÝ ĐƠN HÀNG", callback_data="adm_orders")],
         [InlineKeyboardButton(text="💳 YÊU CẦU NẠP TIỀN", callback_data="adm_deposits")],
         [InlineKeyboardButton(text="💰 ĐIỀU CHỈNH SỐ DƯ VÍ", callback_data="adm_wallet")],
-        [InlineKeyboardButton(text="🏦 CẤU HÌNH 4 STK", callback_data="adm_stks")],
+        [InlineKeyboardButton(text="🏦 TÀI KHOẢN NHẬN TIỀN", callback_data="adm_stks")],
         [InlineKeyboardButton(text="🛍️ QUẢN LÝ SẢN PHẨM – GIÁ", callback_data="adm_price")],
         [InlineKeyboardButton(text="➕ QUẢN LÝ SITE GAME KHÁC", callback_data="adm_sites")],
         [InlineKeyboardButton(text="📨 THÔNG BÁO ĐẾN ID RIÊNG", callback_data="adm_notify")],
@@ -456,8 +462,12 @@ async def order_confirm(call: CallbackQuery, state: FSMContext):
 async def deposit_start(call: CallbackQuery, state: FSMContext):
     await state.set_state(DepositForm.amount)
     await call.message.edit_text(
-        "💳 <b>NẠP TIỀN TỰ ĐỘNG QUA SEPAY</b>\n\n"
-        "Nhập số tiền muốn nạp (tối thiểu 10.000đ):",
+        "💎 <b>NẠP TIỀN VÀO VÍ 💎</b>\n\n"
+        "─────────────────────────\n\n"
+        "Vui lòng nhập số tiền bạn muốn nạp vào hệ thống.\n\n"
+        "⚠️ <b>Quy định nạp tiền:</b>\n"
+        "• Mức nạp tối thiểu: <b>30.000đ</b>\n"
+        "• Vui lòng chỉ nhập số (VD: <code>30000</code> hoặc <code>100000</code>).",
         reply_markup=back_kb()
     )
     await call.answer()
@@ -466,38 +476,41 @@ async def deposit_start(call: CallbackQuery, state: FSMContext):
 @dp.message(DepositForm.amount)
 async def deposit_amount(message: Message, state: FSMContext):
     raw = re.sub(r"[^\d]", "", message.text or "")
-    if not raw or int(raw) < 10000 or int(raw) > 100000000:
-        return await message.answer("⚠️ Số tiền không hợp lệ. Nhập từ 10.000đ đến 100.000.000đ.")
+    if not raw or int(raw) < 30000 or int(raw) > 100000000:
+        return await message.answer("⚠️ Số tiền không hợp lệ. Mức nạp tối thiểu 30.000đ, tối đa 100.000.000đ.")
     amount = int(raw)
     code = f"{SEPAY_PREFIX}{secrets.token_hex(4).upper()}"
     async with aiosqlite.connect(DB_PATH) as db:
+        # Chỉ giữ một yêu cầu nạp đang chờ cho mỗi khách để ID Telegram
+        # kết hợp với số tiền có thể nhận diện giao dịch một cách rõ ràng.
+        await db.execute(
+            "UPDATE deposits SET status='replaced' WHERE user_id=? AND status='pending'",
+            (message.from_user.id,)
+        )
         await db.execute(
             "INSERT INTO deposits(user_id,code,amount,status,created_at) VALUES(?,?,?,'pending',?)",
             (message.from_user.id, code, amount, now_text())
         )
         await db.commit()
     await state.clear()
-    if not (SEPAY_BANK and SEPAY_ACCOUNT and SEPAY_ACCOUNT_NAME):
-        return await message.answer(
-            "⚠️ Hệ thống chưa cấu hình thông tin ngân hàng nhận tiền. Vui lòng liên hệ Admin.",
-            reply_markup=main_kb()
-        )
     qr = (
         f"https://qr.sepay.vn/img?acc={SEPAY_ACCOUNT}&bank={SEPAY_BANK}"
-        f"&amount={amount}&des={code}&template={SEPAY_QR_TEMPLATE}"
+        f"&amount={amount}&des={message.from_user.id}&template={SEPAY_QR_TEMPLATE}"
     )
     await message.answer(
-        f"💳 <b>THÔNG TIN CHUYỂN KHOẢN</b>\n\n"
-        f"🏦 Ngân hàng: <b>{esc(SEPAY_BANK)}</b>\n"
-        f"🔢 Số tài khoản: <code>{esc(SEPAY_ACCOUNT)}</code>\n"
-        f"👤 Chủ tài khoản: <b>{esc(SEPAY_ACCOUNT_NAME)}</b>\n"
-        f"💰 Số tiền: <b>{money(amount)}</b>\n"
-        f"📝 Nội dung CK: <code>{code}</code>\n\n"
-        f"📷 Quét mã QR bên dưới hoặc chuyển khoản đúng số tiền và nội dung.\n"
-        f"⏳ Ví được cộng tự động sau khi SePay xác nhận giao dịch.",
+        "🏦 <b>THÔNG TIN CHUYỂN KHOẢN 🏦</b>\n\n"
+        "─────────────────────────\n\n"
+        "Vui lòng quét mã QR hoặc chuyển khoản thủ công theo thông tin bên dưới:\n\n"
+        f"🏦 Ngân hàng: <b>ACB</b>\n"
+        f"🔢 STK: <code>{SEPAY_ACCOUNT}</code>\n"
+        f"👤 Tên: <b>{esc(SEPAY_ACCOUNT_NAME)}</b>\n\n"
+        f"💵 Số tiền cần nạp: <b>{money(amount)}</b>\n"
+        f"📝 Nội dung: <code>{message.from_user.id}</code>\n\n"
+        "⚠️ <b>QUAN TRỌNG:</b> Hãy chuyển ĐÚNG số tiền và ĐÚNG nội dung là ID Telegram của bạn "
+        "để hệ thống tự động nhận diện và cộng tiền vào ví sau khi SePay xác nhận giao dịch.",
         reply_markup=main_kb()
     )
-    await message.answer_photo(qr, caption=f"QR nạp tiền • {code}")
+    await message.answer_photo(qr, caption=f"QR nạp tiền • ID {message.from_user.id}")
 
 
 @dp.callback_query(F.data == "account")
@@ -635,10 +648,13 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
         await call.message.edit_text("🛍️ <b>QUẢN LÝ SẢN PHẨM – GIÁ</b>\nChọn site để chỉnh mã sản phẩm và giá:", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
         return await call.answer()
     elif action == "adm_stks":
-        slots = []
-        for i in range(1, 5):
-            slots.append(f"STK {i}: {await setting(f'stk{i}', 'Chưa cấu hình')}")
-        text = "🏦 <b>4 STK ĐÃ LIÊN KẾT</b>\n" + "\n".join(slots) + "\n\nDùng /setstk để cấu hình từng STK."
+        text = (
+            "🏦 <b>TÀI KHOẢN NHẬN TIỀN</b>\n\n"
+            "Ngân hàng: <b>ACB</b>\n"
+            f"STK: <code>{SEPAY_ACCOUNT}</code>\n"
+            f"Chủ tài khoản: <b>{esc(SEPAY_ACCOUNT_NAME)}</b>\n\n"
+            "Nội dung chuyển khoản: ID Telegram của khách hàng."
+        )
     elif action == "adm_sites":
         async with aiosqlite.connect(DB_PATH) as db:
             cur = await db.execute("SELECT id,name,product_code,price,active FROM sites ORDER BY id")
@@ -968,17 +984,22 @@ async def sepay_webhook(request: web.Request):
         transfer_type = payload.get("transferType")
         if transfer_type != "in" or amount <= 0:
             return web.json_response({"success": True})
-        match = re.search(rf"\b({re.escape(SEPAY_PREFIX)}[A-Z0-9]{{6,}})\b", content.upper())
-        code = match.group(1) if match else str(payload.get("code") or "").upper()
-        if not code:
+        id_match = re.fullmatch(r"\s*(\d{5,15})\s*", content)
+        transfer_user_id = int(id_match.group(1)) if id_match else None
+        if not transfer_user_id:
             return web.json_response({"success": True})
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("BEGIN IMMEDIATE")
-            cur = await db.execute("SELECT user_id,amount,status FROM deposits WHERE code=?", (code,))
+            cur = await db.execute(
+                "SELECT user_id,amount,status,code FROM deposits "
+                "WHERE user_id=? AND amount=? AND status='pending' ORDER BY id DESC LIMIT 1",
+                (transfer_user_id, amount)
+            )
             dep = await cur.fetchone()
-            if not dep or dep[1] != amount or dep[2] != "pending":
+            if not dep:
                 await db.rollback()
                 return web.json_response({"success": True})
+            code = dep[3]
             try:
                 await db.execute("INSERT INTO sepay_events(sepay_id,received_at,payload) VALUES(?,?,?)",
                                  (sepay_id, now_text(), str(payload)))
