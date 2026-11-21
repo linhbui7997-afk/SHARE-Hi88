@@ -324,10 +324,10 @@ async def choose_site(call: CallbackQuery, state: FSMContext):
         f"🎁 <b>{esc(site[1])}</b>\n"
         f"🎟 Mã sản phẩm: <code>{esc(site[2])}</code>\n"
         f"💰 Giá mỗi đơn: <b>{money(site[3])}</b>\n\n"
-        f"⚙️ <b>ĐIỀU KIỆN ĐẶT ĐƠN</b>\n"
-        f"• Tổng nạp thành công trên {money(MIN_TOTAL_DEPOSIT)}.\n"
-        f"• Có ít nhất {MIN_DEPOSIT_COUNT} lần nạp thành công.\n\n"
-        "Nhấn tiếp tục để nhập thông tin.",
+        "Nhấn tiếp tục để nhập thông tin đặt hàng.\n\n"
+        "<i>Lưu ý: Điều kiện nạp/cược để nhận khuyến mãi là quy định của trang game, "
+        "không phải điều kiện mua code. Hội viên vui lòng đáp ứng điều kiện của trang game "
+        "để được xét nhận khuyến mãi chia sẻ.</i>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🛒 TIẾP TỤC", callback_data="order_begin")],
             [InlineKeyboardButton(text="↩️ CHỌN SITE KHÁC", callback_data="buy")]
@@ -341,18 +341,6 @@ async def order_begin(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     if not data.get("site_id"):
         return await call.answer("Vui lòng chọn site trước.", show_alert=True)
-    async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute(
-            "SELECT COALESCE(SUM(amount),0), COUNT(*) FROM deposits WHERE user_id=? AND status='paid'",
-            (call.from_user.id,)
-        )
-        total, count = await cur.fetchone()
-    if total <= MIN_TOTAL_DEPOSIT or count < MIN_DEPOSIT_COUNT:
-        await call.answer(
-            f"Chưa đủ điều kiện: tổng nạp phải trên {money(MIN_TOTAL_DEPOSIT)} và từ {MIN_DEPOSIT_COUNT} lần nạp thành công.",
-            show_alert=True
-        )
-        return
     await state.set_state(OrderForm.account_name)
     await call.message.edit_text(
         f"📝 <b>THÔNG TIN ĐẶT HÀNG • {esc(data['site_name'])}</b>\n\n"
@@ -387,15 +375,6 @@ async def order_stk(message: Message, state: FSMContext):
     if not row or row["wallet"] < price:
         await state.clear()
         return await message.answer(f"💳 Số dư không đủ. Giá đơn {money(price)}. Vui lòng nạp tiền.", reply_markup=main_kb(message.from_user.id))
-    async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute(
-            "SELECT COALESCE(SUM(amount),0), COUNT(*) FROM deposits WHERE user_id=? AND status='paid'",
-            (message.from_user.id,)
-        )
-        total, count = await cur.fetchone()
-    if total <= MIN_TOTAL_DEPOSIT or count < MIN_DEPOSIT_COUNT:
-        await state.clear()
-        return await message.answer("⚠️ Tài khoản chưa đáp ứng điều kiện nhận thưởng.", reply_markup=main_kb(message.from_user.id))
     await state.update_data(stk_last4=digits)
     await state.set_state(OrderForm.confirm)
     await message.answer(
