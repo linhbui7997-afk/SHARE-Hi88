@@ -845,6 +845,7 @@ async def site_add_price(message: Message, state: FSMContext):
                              (data["site_name"], data["product_code"], int(raw), 1, now_text()))
             await db.commit()
     except aiosqlite.IntegrityError:
+        await state.clear()
         return await message.answer("Tên site đã tồn tại. Nhập /admin để kiểm tra.")
     await state.clear()
     await message.answer(f"✅ Đã thêm site {esc(data['site_name'])} • mã {esc(data['product_code'])} • {money(int(raw))}. Site đã xuất hiện trong danh sách đặt đơn.")
@@ -912,7 +913,6 @@ async def site_toggle(call: CallbackQuery):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("UPDATE sites SET active=CASE active WHEN 1 THEN 0 ELSE 1 END WHERE id=?", (site_id,))
         await db.commit()
-    await call.answer("Đã đổi trạng thái site.")
     await site_toggle_list(call)
 
 
