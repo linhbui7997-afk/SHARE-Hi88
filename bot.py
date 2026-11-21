@@ -675,14 +675,14 @@ async def publish_order_announcement(order_id):
             "ON CONFLICT(order_id) DO UPDATE SET status='sending',updated_at=excluded.updated_at",
             (order_id, "sending", now_text())
         )
-        cur = await db.execute("SELECT product,account_name,price FROM orders WHERE id=? AND status='completed'", (order_id,))
+        cur = await db.execute("SELECT product,product_code,account_name,price FROM orders WHERE id=? AND status='completed'", (order_id,))
         order = await cur.fetchone()
         if not order:
             await db.rollback()
             return "not_completed"
         await db.commit()
 
-    product, account_name, price = order
+    product, product_code, account_name, price = order
     approved_at = datetime.now(TZ).strftime("%d/%m/%Y - %H:%M")
     post = (
         "🎉 <b>ĐƠN HÀNG ĐÃ XỬ LÝ THÀNH CÔNG</b>\n\n"
@@ -690,7 +690,7 @@ async def publish_order_announcement(order_id):
         f"🎁 <b>KM SHARE {esc(product)}</b>\n\n"
         "━━━━━━━━━━━━━━━\n\n"
         f"👤 Tài khoản: <code>{esc(account_name)}</code>\n\n"
-        f"🎟 Gói khuyến mãi: <code>KM SHARE {esc(product)}</code>\n\n"
+        f"🎟 Gói khuyến mãi: <code>KM SHARE {esc(product)} [{esc(product_code)}]</code>\n\n"
         f"💰 Giá trị đơn: <code>{money(price)}</code>\n\n"
         f"🆔 Mã đơn hàng: <code>DH{order_id:08d}</code>\n\n"
         f"📆 Thời gian: <code>{approved_at}</code>\n\n"
