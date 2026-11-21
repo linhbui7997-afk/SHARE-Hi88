@@ -648,8 +648,12 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
         await call.message.edit_text("💰 Nhập Telegram ID khách hàng:", reply_markup=back_kb())
         return await call.answer()
     elif action == "adm_price":
-        await state.set_state(AdminPriceForm.price)
-        await call.message.edit_text(f"🏷️ Giá hiện tại: {money(await current_price())}\nNhập giá mới bằng VNĐ:", reply_markup=back_kb())
+        async with aiosqlite.connect(DB_PATH) as db:
+            cur = await db.execute("SELECT id,name,product_code,price FROM sites ORDER BY id")
+            rows = await cur.fetchall()
+        buttons = [[InlineKeyboardButton(text=f"{r[1]} • {r[2]} • {money(r[3])}", callback_data=f"site_price:{r[0]}")] for r in rows]
+        buttons.append([InlineKeyboardButton(text="↩️ VỀ QUẢN TRỊ", callback_data="admin_home")])
+        await call.message.edit_text("🛍️ <b>QUẢN LÝ SẢN PHẨM – GIÁ</b>\nChọn site để chỉnh mã sản phẩm và giá:", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
         return await call.answer()
     elif action == "adm_stks":
         slots = []
