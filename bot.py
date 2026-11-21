@@ -40,6 +40,7 @@ SEPAY_BANK = "ACB"
 SEPAY_ACCOUNT = "28682791"
 SEPAY_ACCOUNT_NAME = "BUI HOANG YEN LINH"
 SEPAY_QR_TEMPLATE = os.getenv("SEPAY_QR_TEMPLATE", "compact2")
+ORDER_ANNOUNCE_CHANNEL = os.getenv("ORDER_ANNOUNCE_CHANNEL", "@sharegame1")
 SEPAY_PREFIX = re.sub(r"[^A-Z0-9]", "", os.getenv("SEPAY_CODE_PREFIX", "SH").upper())[:5] or "SH"
 TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
@@ -93,6 +94,12 @@ async def init_db():
         );
         CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS admins(user_id INTEGER PRIMARY KEY, role TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS order_announcements(
+          order_id INTEGER PRIMARY KEY,
+          status TEXT NOT NULL DEFAULT 'pending',
+          message_id INTEGER,
+          updated_at TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS sites(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL UNIQUE,
@@ -653,20 +660,95 @@ async def admin_order_processing(call: CallbackQuery):
     await call.answer("Đã cập nhật.")
 
 
+async def publish_order_announcement(order_id):
+    """Publish one successful order to the announcement channel; never auto-duplicate."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("BEGIN IMMEDIATE")
+        cur = await db.execute("SELECT status FROM order_announcements WHERE order_id=?", (order_id,))
+        existing = await cur.fetchone()
+        if existing and existing[0] in ("sending", "sent"):
+            await db.rollback()
+            return existing[0]
+        await db.execute(
+            "INSERT INTO order_announcements(order_id,status,updated_at) VALUES(?,?,?) "
+            "ON CONFLICT(order_id) DO UPDATE SET status='sending',updated_at=excluded.updated_at",
+            (order_id, "sending", now_text())
+        )
+        cur = await db.execute("SELECT product,account_name,price FROM orders WHERE id=? AND status='completed'", (order_id,))
+        order = await cur.fetchone()
+        if not order:
+            await db.rollback()
+            return "not_completed"
+        await db.commit()
+
+    product, account_name, price = order
+    approved_at = datetime.now(TZ).strftime("%d/%m/%Y - %H:%M")
+    post = (
+        "🎉 <b>ĐƠN HÀNG ĐÃ XỬ LÝ THÀNH CÔNG</b>\n\n"
+        "✅ <b>GIAO DỊCH THÀNH CÔNG</b>\n\n"
+        f"🎁 <b>KM SHARE {esc(product)}</b>\n\n"
+        "━━━━━━━━━━━━━━━\n\n"
+        f"👤 Tài khoản: <code>{esc(account_name)}</code>\n\n"
+        f"🎟 Gói khuyến mãi: <code>KM SHARE {esc(product)}</code>\n\n"
+        f"💰 Giá trị đơn: <code>{money(price)}</code>\n\n"
+        f"🆔 Mã đơn hàng: <code>DH{order_id:08d}</code>\n\n"
+        f"📆 Thời gian: <code>{approved_at}</code>\n\n"
+        "━━━━━━━━━━━━━━━\n\n"
+        "✅ Yêu cầu của quý khách đã được xét duyệt thành công! Vui lòng làm mới trang và kiểm tra số dư."
+    )
+    try:
+        sent = await bot.send_message(ORDER_ANNOUNCE_CHANNEL, post)
+    except Exception:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("UPDATE order_announcements SET status='failed',updated_at=? WHERE order_id=? AND status='sending'", (now_text(), order_id))
+            await db.commit()
+        log.exception("Could not publish completed order %s to %s", order_id, ORDER_ANNOUNCE_CHANNEL)
+        return "failed"
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE order_announcements SET status='sent',message_id=?,updated_at=? WHERE order_id=?", (sent.message_id, now_text(), order_id))
+        await db.commit()
+    return "sent"
+
 @dp.callback_query(F.data.startswith("orddone:"))
 async def admin_order_done(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return await call.answer("Không có quyền.", show_alert=True)
-    oid = int(call.data.split(":")[1])
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE orders SET status='completed',updated_at=? WHERE id=? AND status IN ('pending','processing')", (now_text(), oid))
-        await db.commit()
-        cur = await db.execute("SELECT user_id FROM orders WHERE id=?", (oid,))
-        row = await cur.fetchone()
-    if row:
-        await bot.send_message(row[0], f"✅ Đơn ORD-{oid:06d} đã hoàn thành.")
-    await call.answer("Đã hoàn thành.")
+    try:
+        oid = int(call.data.split(":")[1])
+    except (ValueError, IndexError):
+        return await call.answer("Mã đơn không hợp lệ.", show_alert=True)
 
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("BEGIN IMMEDIATE")
+        cur = await db.execute("SELECT user_id,status FROM orders WHERE id=?", (oid,))
+        row = await cur.fetchone()
+        if not row:
+            await db.rollback()
+            return await call.answer("Không tìm thấy đơn hàng.", show_alert=True)
+        uid, current_status = row
+        if current_status == "completed":
+            await db.rollback()
+            return await call.answer("Đơn này đã hoàn thành trước đó.", show_alert=True)
+        if current_status not in ("pending", "processing"):
+            await db.rollback()
+            return await call.answer("Trạng thái đơn không cho phép hoàn thành.", show_alert=True)
+        await db.execute("UPDATE orders SET status='completed',updated_at=? WHERE id=?", (now_text(), oid))
+        await db.execute("INSERT INTO order_announcements(order_id,status,updated_at) VALUES(?,?,?) ON CONFLICT(order_id) DO NOTHING", (oid, "pending", now_text()))
+        await db.commit()
+
+    try:
+        await bot.send_message(uid, f"✅ Đơn DH{oid:08d} đã hoàn thành.")
+    except Exception:
+        log.exception("Could not notify user about completed order %s", oid)
+
+    publish_result = await publish_order_announcement(oid)
+    if publish_result == "sent":
+        await call.answer("Đã hoàn thành đơn và đăng thông báo lên kênh.")
+    elif publish_result == "failed":
+        await call.answer("Đơn đã hoàn thành; đăng kênh thất bại. Cần kiểm tra quyền bot/kênh.", show_alert=True)
+    else:
+        await call.answer("Đơn đã được xử lý trước đó.")
 
 @dp.callback_query(F.data.startswith("ordrefund:"))
 async def admin_order_refund(call: CallbackQuery):
