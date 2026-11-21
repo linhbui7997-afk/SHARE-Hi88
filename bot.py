@@ -179,6 +179,7 @@ def back_kb():
 
 def admin_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⏳ ĐANG ĐỢI XỬ LÝ", callback_data="adm_waiting")],
         [InlineKeyboardButton(text="👥 QUẢN LÝ KHÁCH HÀNG", callback_data="adm_users")],
         [InlineKeyboardButton(text="📦 QUẢN LÝ ĐƠN HÀNG", callback_data="adm_orders")],
         [InlineKeyboardButton(text="💳 YÊU CẦU NẠP TIỀN", callback_data="adm_deposits")],
@@ -777,6 +778,44 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
     if not is_admin(call.from_user.id):
         return await call.answer("Không có quyền.", show_alert=True)
     action = call.data
+    if action == "adm_waiting":
+        async with aiosqlite.connect(DB_PATH) as db:
+            cur = await db.execute(
+                "SELECT o.id,o.user_id,u.username,o.product,o.product_code,o.account_name,o.stk_last4,o.price,o.status,o.created_at "
+                "FROM orders o LEFT JOIN users u ON u.user_id=o.user_id "
+                "WHERE o.status IN ('pending','processing') ORDER BY o.id ASC LIMIT 50"
+            )
+            rows = await cur.fetchall()
+        await call.message.edit_text(
+            f"⏳ <b>ĐANG ĐỢI XỬ LÝ</b>\n\nCó <b>{len(rows)}</b> đơn hàng đang chờ Admin xét duyệt.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="↻ LÀM MỚI", callback_data="adm_waiting"),
+                 InlineKeyboardButton(text="↩️ QUAY LẠI", callback_data="admin_home")]
+            ])
+        )
+        for r in rows:
+            oid, uid, username, product, code, account, last4, price, status, created = r
+            detail = (
+                f"📦 <b>ĐƠN DH{oid:08d}</b>\n"
+                f"👤 Khách: @{esc(username) if username else 'Không có username'} (<code>{uid}</code>)\n"
+                f"🎁 Gói: <b>KM SHARE {esc(product)}</b> • Mã {esc(code)}\n"
+                f"🎮 Tài khoản: <code>{esc(account)}</code>\n"
+                f"🏦 4 số cuối: <code>{esc(last4)}</code>\n"
+                f"💰 Giá trị: <b>{money(price)}</b>\n"
+                f"📌 Trạng thái: <b>{'Đang xử lý' if status == 'processing' else 'Chờ xét duyệt'}</b>\n"
+                f"🕒 Thời gian: {esc(created)}"
+            )
+            await call.message.answer(
+                detail,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="↻", callback_data=f"ordproc:{oid}"),
+                     InlineKeyboardButton(text="done", callback_data=f"orddone:{oid}"),
+                     InlineKeyboardButton(text="×", callback_data=f"ordrefund:{oid}")]
+                ])
+            )
+        if not rows:
+            await call.message.answer("✅ Hiện không có đơn hàng nào đang chờ xử lý.")
+        return await call.answer("Đã tải danh sách đơn chờ xử lý.")
     if action == "adm_users":
         async with aiosqlite.connect(DB_PATH) as db:
             cur = await db.execute("SELECT user_id,username,wallet FROM users ORDER BY created_at DESC LIMIT 15")
