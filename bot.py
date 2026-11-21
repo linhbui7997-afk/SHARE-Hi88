@@ -303,7 +303,7 @@ async def buy(call: CallbackQuery, state: FSMContext):
         cur = await db.execute("SELECT id,name,product_code,price FROM sites WHERE active=1 ORDER BY id")
         sites = await cur.fetchall()
     buttons = [[InlineKeyboardButton(text=f"🎁 {r[1]} • Mã {r[2]} • {money(r[3])}", callback_data=f"site:{r[0]}")] for r in sites]
-    buttons.append([InlineKeyboardButton(text="↩️ QUAY LẠI", callback_data="home")])
+    buttons.append([InlineKeyboardButton(text="🏠 VỀ MENU CHÍNH", callback_data="home")])
     await call.message.edit_text(
         "🎁 <b>ĐẶT ĐƠN KM SHARE</b>\n\n"
         "Vui lòng chọn site game muốn đặt đơn.\n"
@@ -336,7 +336,8 @@ async def choose_site(call: CallbackQuery, state: FSMContext):
         "để được xét nhận khuyến mãi chia sẻ.</i>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🛒 TIẾP TỤC", callback_data="order_begin")],
-            [InlineKeyboardButton(text="↩️ CHỌN SITE KHÁC", callback_data="buy")]
+            [InlineKeyboardButton(text="↩️ QUAY LẠI BƯỚC 1", callback_data="buy")],
+            [InlineKeyboardButton(text="🏠 VỀ MENU CHÍNH", callback_data="home")]
         ])
     )
     await call.answer()
@@ -351,7 +352,10 @@ async def order_begin(call: CallbackQuery, state: FSMContext):
     await call.message.edit_text(
         f"📝 <b>THÔNG TIN ĐẶT HÀNG • {esc(data['site_name'])}</b>\n\n"
         f"👤 Vui lòng nhập tên tài khoản {esc(data['site_name'])}:",
-        reply_markup=back_kb()
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="↩️ QUAY LẠI BƯỚC 1", callback_data="buy")],
+            [InlineKeyboardButton(text="🏠 VỀ MENU CHÍNH", callback_data="home")]
+        ])
     )
     await call.answer()
 
@@ -366,7 +370,10 @@ async def order_account(message: Message, state: FSMContext):
     data = await state.get_data()
     await message.answer(
         f"🏦 Nhập <b>4 số cuối STK đã liên kết</b> với tài khoản {esc(data.get('site_name','game'))}:",
-        reply_markup=back_kb()
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="↩️ QUAY LẠI BƯỚC 2", callback_data="order_back_account")],
+            [InlineKeyboardButton(text="🏠 VỀ MENU CHÍNH", callback_data="home")]
+        ])
     )
 
 
@@ -376,11 +383,7 @@ async def order_stk(message: Message, state: FSMContext):
     if len(digits) != 4:
         return await message.answer("⚠️ Vui lòng nhập đúng 4 chữ số cuối của STK.")
     data = await state.get_data()
-    row = await get_user(message.from_user.id)
     price = int(data["price"])
-    if not row or row["wallet"] < price:
-        await state.clear()
-        return await message.answer(f"💳 Số dư không đủ. Giá đơn {money(price)}. Vui lòng nạp tiền.", reply_markup=main_kb(message.from_user.id))
     await state.update_data(stk_last4=digits)
     await state.set_state(OrderForm.confirm)
     await message.answer(
@@ -392,10 +395,66 @@ async def order_stk(message: Message, state: FSMContext):
         f"💰 Giá đơn: <b>{money(price)}</b>\n\n"
         "Vui lòng kiểm tra trước khi xác nhận.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ XÁC NHẬN ĐẶT ĐƠN", callback_data="order_confirm")],
-            [InlineKeyboardButton(text="↩️ HỦY / QUAY LẠI", callback_data="home")]
+            [InlineKeyboardButton(text="✅ XÁC NHẬN THANH TOÁN", callback_data="order_confirm")],
+            [InlineKeyboardButton(text="↩️ QUAY LẠI BƯỚC 2", callback_data="order_back_stk")],
+            [InlineKeyboardButton(text="🏠 VỀ MENU CHÍNH", callback_data="home")]
         ])
     )
+
+
+@dp.callback_query(F.data == "order_back_account")
+async def order_back_account(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    if not data.get("site_id"):
+        return await call.answer("Phiên đặt đơn đã hết hạn.", show_alert=True)
+    await state.set_state(OrderForm.account_name)
+    await call.message.edit_text(
+        f"📝 <b>THÔNG TIN ĐẶT HÀNG • {esc(data['site_name'])}</b>\n\n"
+        f"👤 Vui lòng nhập lại tên tài khoản {esc(data['site_name'])}:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="↩️ QUAY LẠI BƯỚC 1", callback_data="buy")],
+            [InlineKeyboardButton(text="🏠 VỀ MENU CHÍNH", callback_data="home")]
+        ])
+    )
+    await call.answer()
+
+
+@dp.callback_query(F.data == "order_back_stk")
+async def order_back_stk(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    if not data.get("account_name"):
+        return await call.answer("Vui lòng nhập lại thông tin tài khoản.", show_alert=True)
+    await state.set_state(OrderForm.stk_last4)
+    await call.message.edit_text(
+        f"🏦 Nhập lại <b>4 số cuối STK đã liên kết</b> với tài khoản {esc(data.get('site_name','game'))}:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="↩️ QUAY LẠI BƯỚC 2", callback_data="order_back_account")],
+            [InlineKeyboardButton(text="🏠 VỀ MENU CHÍNH", callback_data="home")]
+        ])
+    )
+    await call.answer()
+
+
+@dp.callback_query(F.data == "order_retry_confirm")
+async def order_retry_confirm(call: CallbackQuery, state: FSMContext):
+    if await state.get_state() != OrderForm.confirm.state:
+        return await call.answer("Phiên đặt đơn đã hết hạn. Vui lòng thao tác lại.", show_alert=True)
+    data = await state.get_data()
+    await call.message.edit_text(
+        "🔎 <b>XÁC NHẬN THANH TOÁN</b>\n\n"
+        f"🎮 Site: <b>{esc(data['site_name'])}</b>\n"
+        f"🎟 Mã sản phẩm: <code>{esc(data['product_code'])}</code>\n"
+        f"👤 Tài khoản game: <b>{esc(data['account_name'])}</b>\n"
+        f"🏦 4 số cuối STK: <code>{data['stk_last4']}</code>\n"
+        f"💰 Giá đơn: <b>{money(data['price'])}</b>\n\n"
+        "Thanh toán bằng số dư có trong bot. Nhấn xác nhận để kiểm tra số dư.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ XÁC NHẬN THANH TOÁN", callback_data="order_confirm")],
+            [InlineKeyboardButton(text="↩️ QUAY LẠI BƯỚC 2", callback_data="order_back_stk")],
+            [InlineKeyboardButton(text="🏠 VỀ MENU CHÍNH", callback_data="home")]
+        ])
+    )
+    await call.answer()
 
 
 @dp.callback_query(F.data == "order_confirm")
@@ -412,8 +471,23 @@ async def order_confirm(call: CallbackQuery, state: FSMContext):
         active = await cur.fetchone()
         if not wallet or wallet[0] < price or not active or not active[0]:
             await db.rollback()
-            await state.clear()
-            return await call.answer("Số dư không đủ hoặc site đã ngừng hoạt động.", show_alert=True)
+            current_wallet = wallet[0] if wallet else 0
+            reason = ("Số dư ví không đủ để thanh toán." if wallet and wallet[0] < price
+                      else "Site đã ngừng hoạt động, vui lòng chọn site khác.")
+            await call.message.edit_text(
+                "❌ <b>XÁC NHẬN GIAO DỊCH THẤT BẠI</b>\n\n"
+                f"{reason}\n"
+                f"💰 Giá đơn: <b>{money(price)}</b>\n"
+                f"👛 Số dư hiện tại: <b>{money(current_wallet)}</b>\n"
+                "⛔ Chưa trừ tiền và chưa tạo đơn hàng.\n\n"
+                "Bạn có thể quay lại xác nhận sau khi nạp tiền hoặc chọn lại site.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="↩️ QUAY LẠI BƯỚC 3", callback_data="order_retry_confirm")],
+                    [InlineKeyboardButton(text="💰 NẠP TIỀN", callback_data="deposit")],
+                    [InlineKeyboardButton(text="🏠 VỀ MENU CHÍNH", callback_data="home")]
+                ])
+            )
+            return await call.answer("Giao dịch thất bại: không đủ điều kiện thanh toán.", show_alert=True)
         await db.execute("UPDATE users SET wallet=wallet-? WHERE user_id=? AND wallet>=?", (price, call.from_user.id, price))
         cur = await db.execute(
             "INSERT INTO orders(user_id,product,product_code,account_name,stk_last4,price,status,created_at,updated_at) VALUES(?,?,?,?,?,?,'pending',?,?)",
