@@ -299,6 +299,7 @@ async def cb_home(call: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "buy")
 async def buy(call: CallbackQuery, state: FSMContext):
+    await state.clear()
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("SELECT id,name,product_code,price FROM sites WHERE active=1 ORDER BY id")
         sites = await cur.fetchall()
