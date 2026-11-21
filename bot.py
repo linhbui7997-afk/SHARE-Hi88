@@ -93,7 +93,26 @@ async def init_db():
         );
         CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS admins(user_id INTEGER PRIMARY KEY, role TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS sites(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL UNIQUE,
+          product_code TEXT NOT NULL,
+          price INTEGER NOT NULL DEFAULT 50000,
+          active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL
+        );
         """)
+        # Safe schema migration for databases created by older bot versions.
+        cur = await db.execute("PRAGMA table_info(orders)")
+        columns = {row[1] for row in await cur.fetchall()}
+        if "product_code" not in columns:
+            await db.execute("ALTER TABLE orders ADD COLUMN product_code TEXT NOT NULL DEFAULT ''")
+        cur = await db.execute("SELECT COUNT(*) FROM sites")
+        if (await cur.fetchone())[0] == 0:
+            await db.executemany(
+                "INSERT INTO sites(name,product_code,price,active,created_at) VALUES(?,?,?,?,?)",
+                [("HI88", "108", 50000, 1, now_text()), ("QQ88", "108", 50000, 1, now_text())]
+            )
         await db.commit()
 
 
@@ -129,14 +148,15 @@ async def set_setting(key, value):
 
 def main_kb(user_id=None):
     rows = [
-        [InlineKeyboardButton(text="🎁 KM SHARE", callback_data="buy")],
-        [InlineKeyboardButton(text="💳 NẠP TIỀN", callback_data="deposit")],
-        [InlineKeyboardButton(text="📊 LỊCH SỬ GIAO DỊCH", callback_data="history")],
-        [InlineKeyboardButton(text="⏳ ĐƠN HÀNG CỦA TÔI", callback_data="myorders")],
-        [InlineKeyboardButton(text="🎧 HỖ TRỢ", url=os.getenv("SUPPORT_URL", "https://t.me/"))],
+        [InlineKeyboardButton(text="🎁 ĐẶT ĐƠN KM SHARE", callback_data="buy")],
+        [InlineKeyboardButton(text="💰 NẠP TIỀN", callback_data="deposit")],
+        [InlineKeyboardButton(text="👤 TÀI KHOẢN", callback_data="account")],
+        [InlineKeyboardButton(text="📜 LỊCH SỬ ĐƠN HÀNG", callback_data="myorders")],
+        [InlineKeyboardButton(text="💳 LỊCH SỬ GIAO DỊCH", callback_data="history")],
+        [InlineKeyboardButton(text="🎧 LIÊN HỆ HỖ TRỢ", url=os.getenv("SUPPORT_URL", "https://t.me/nilatao"))],
     ]
     if user_id is not None and is_admin(user_id):
-        rows.append([InlineKeyboardButton(text="👑 BẢNG QUẢN LÍ ADMIN", callback_data="admin_home")])
+        rows.append([InlineKeyboardButton(text="👑 BẢNG QUẢN LÝ ADMIN", callback_data="admin_home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -146,13 +166,16 @@ def back_kb():
 
 def admin_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👥 Khách hàng", callback_data="adm_users"),
-         InlineKeyboardButton(text="📦 Đơn hàng", callback_data="adm_orders")],
-        [InlineKeyboardButton(text="💳 Yêu cầu nạp", callback_data="adm_deposits"),
-         InlineKeyboardButton(text="💰 Điều chỉnh ví", callback_data="adm_wallet")],
-        [InlineKeyboardButton(text="🏦 Cấu hình 4 STK", callback_data="adm_stks"),
-         InlineKeyboardButton(text="🏷️ Giá sản phẩm", callback_data="adm_price")],
-        [InlineKeyboardButton(text="📊 Báo cáo", callback_data="adm_report")],
+        [InlineKeyboardButton(text="👥 QUẢN LÝ KHÁCH HÀNG", callback_data="adm_users")],
+        [InlineKeyboardButton(text="📦 QUẢN LÝ ĐƠN HÀNG", callback_data="adm_orders")],
+        [InlineKeyboardButton(text="💳 YÊU CẦU NẠP TIỀN", callback_data="adm_deposits")],
+        [InlineKeyboardButton(text="💰 ĐIỀU CHỈNH SỐ DƯ VÍ", callback_data="adm_wallet")],
+        [InlineKeyboardButton(text="🏦 CẤU HÌNH 4 STK", callback_data="adm_stks")],
+        [InlineKeyboardButton(text="🛍️ QUẢN LÝ SẢN PHẨM – GIÁ", callback_data="adm_price")],
+        [InlineKeyboardButton(text="➕ QUẢN LÝ SITE GAME KHÁC", callback_data="adm_sites")],
+        [InlineKeyboardButton(text="📨 THÔNG BÁO ĐẾN ID RIÊNG", callback_data="adm_notify")],
+        [InlineKeyboardButton(text="📊 BÁO CÁO DOANH THU", callback_data="adm_report")],
+        [InlineKeyboardButton(text="⚙️ CÀI ĐẶT HỆ THỐNG", callback_data="adm_settings")],
     ])
 
 
@@ -224,6 +247,30 @@ class AdminStkForm(StatesGroup):
     label = State()
 
 
+class AdminSiteForm(StatesGroup):
+    name = State()
+    code = State()
+    price = State()
+
+
+class SitePriceForm(StatesGroup):
+    site_id = State()
+    code = State()
+    price = State()
+
+
+class NotifyForm(StatesGroup):
+    recipient = State()
+    content = State()
+    confirm = State()
+
+
+class OrderForm(StatesGroup):
+    account_name = State()
+    stk_last4 = State()
+    confirm = State()
+
+
 @dp.message(CommandStart())
 async def start(message: Message, state: FSMContext):
     await state.clear()
@@ -246,29 +293,54 @@ async def cb_home(call: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "buy")
 async def buy(call: CallbackQuery, state: FSMContext):
-    if not PRODUCT_ACTIVE:
-        return await call.answer("Sản phẩm hiện tạm ngưng.", show_alert=True)
-    text = (
-        f"🎁 <b>KM SHARE</b>\n\n"
-        f"🚀 <b>{esc(PRODUCT_LABEL)}</b>\n"
-        f"💰 Giá đơn: <b>{money(await current_price())}</b>\n\n"
-        f"⚙️ <b>ĐIỀU KIỆN NHẬN THƯỞNG</b>\n"
-        f"• Tài khoản không lạm dụng.\n"
-        f"• Không hoàn tiền nếu tài khoản bị xác định lạm dụng theo điều khoản.\n"
-        f"• Tổng nạp thành công trên {money(MIN_TOTAL_DEPOSIT)}.\n"
-        f"• Có ít nhất {MIN_DEPOSIT_COUNT} lần nạp thành công.\n\n"
-        f"Nhấn tiếp tục để nhập thông tin đặt hàng."
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT id,name,product_code,price FROM sites WHERE active=1 ORDER BY id")
+        sites = await cur.fetchall()
+    buttons = [[InlineKeyboardButton(text=f"🎁 {r[1]} • Mã {r[2]} • {money(r[3])}", callback_data=f"site:{r[0]}")] for r in sites]
+    buttons.append([InlineKeyboardButton(text="↩️ QUAY LẠI", callback_data="home")])
+    await call.message.edit_text(
+        "🎁 <b>ĐẶT ĐƠN KM SHARE</b>\\n\\n"
+        "Vui lòng chọn site game muốn đặt đơn.\\n"
+        "Mã 108 là mã sản phẩm, không phải số lượng.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🛒 CHỌN MUA HI88", callback_data="order_begin")],
-        [InlineKeyboardButton(text="↩️ QUAY LẠI", callback_data="home")]
-    ])
-    await call.message.edit_text(text, reply_markup=kb)
+    await call.answer()
+
+
+@dp.callback_query(F.data.startswith("site:"))
+async def choose_site(call: CallbackQuery, state: FSMContext):
+    try:
+        site_id = int(call.data.split(":")[1])
+    except (ValueError, IndexError):
+        return await call.answer("Site không hợp lệ.", show_alert=True)
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT id,name,product_code,price FROM sites WHERE id=? AND active=1", (site_id,))
+        site = await cur.fetchone()
+    if not site:
+        return await call.answer("Site hiện không hoạt động.", show_alert=True)
+    await state.clear()
+    await state.update_data(site_id=site[0], site_name=site[1], product_code=site[2], price=site[3])
+    await call.message.edit_text(
+        f"🎁 <b>{esc(site[1])}</b>\\n"
+        f"🎟 Mã sản phẩm: <code>{esc(site[2])}</code>\\n"
+        f"💰 Giá mỗi đơn: <b>{money(site[3])}</b>\\n\\n"
+        f"⚙️ <b>ĐIỀU KIỆN ĐẶT ĐƠN</b>\\n"
+        f"• Tổng nạp thành công trên {money(MIN_TOTAL_DEPOSIT)}.\\n"
+        f"• Có ít nhất {MIN_DEPOSIT_COUNT} lần nạp thành công.\\n\\n"
+        "Nhấn tiếp tục để nhập thông tin.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🛒 TIẾP TỤC", callback_data="order_begin")],
+            [InlineKeyboardButton(text="↩️ CHỌN SITE KHÁC", callback_data="buy")]
+        ])
+    )
     await call.answer()
 
 
 @dp.callback_query(F.data == "order_begin")
 async def order_begin(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    if not data.get("site_id"):
+        return await call.answer("Vui lòng chọn site trước.", show_alert=True)
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
             "SELECT COALESCE(SUM(amount),0), COUNT(*) FROM deposits WHERE user_id=? AND status='paid'",
@@ -283,8 +355,8 @@ async def order_begin(call: CallbackQuery, state: FSMContext):
         return
     await state.set_state(OrderForm.account_name)
     await call.message.edit_text(
-        "📝 <b>THÔNG TIN ĐẶT HÀNG</b>\n\n"
-        "👤 Vui lòng điền tên tài khoản HI88:",
+        f"📝 <b>THÔNG TIN ĐẶT HÀNG • {esc(data['site_name'])}</b>\\n\\n"
+        f"👤 Vui lòng nhập tên tài khoản {esc(data['site_name'])}:",
         reply_markup=back_kb()
     )
     await call.answer()
@@ -297,82 +369,108 @@ async def order_account(message: Message, state: FSMContext):
         return await message.answer("⚠️ Tên tài khoản không hợp lệ. Vui lòng nhập lại.")
     await state.update_data(account_name=name)
     await state.set_state(OrderForm.stk_last4)
+    data = await state.get_data()
     await message.answer(
-        "🏦 <b>THÔNG TIN ĐẶT HÀNG</b>\n\n"
-        "Vui lòng nhập <b>4 số cuối STK đã liên kết</b> với tài khoản HI88:",
+        f"🏦 Nhập <b>4 số cuối STK đã liên kết</b> với tài khoản {esc(data.get('site_name','game'))}:",
         reply_markup=back_kb()
     )
 
 
 @dp.message(OrderForm.stk_last4)
 async def order_stk(message: Message, state: FSMContext):
-    digits = re.sub(r"\D", "", message.text or "")
+    digits = re.sub(r"\\D", "", message.text or "")
     if len(digits) != 4:
         return await message.answer("⚠️ Vui lòng nhập đúng 4 chữ số cuối của STK.")
     data = await state.get_data()
-    price = await current_price()
     row = await get_user(message.from_user.id)
+    price = int(data["price"])
     if not row or row["wallet"] < price:
         await state.clear()
-        return await message.answer(
-            f"💳 Số dư không đủ. Giá đơn {money(await current_price())}.\nVui lòng nạp tiền trước.",
-            reply_markup=main_kb()
-        )
+        return await message.answer(f"💳 Số dư không đủ. Giá đơn {money(price)}. Vui lòng nạp tiền.", reply_markup=main_kb(message.from_user.id))
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
             "SELECT COALESCE(SUM(amount),0), COUNT(*) FROM deposits WHERE user_id=? AND status='paid'",
             (message.from_user.id,)
         )
         total, count = await cur.fetchone()
-        if total <= MIN_TOTAL_DEPOSIT or count < MIN_DEPOSIT_COUNT:
-            await state.clear()
-            return await message.answer("⚠️ Tài khoản chưa đáp ứng điều kiện nhận thưởng.", reply_markup=main_kb())
+    if total <= MIN_TOTAL_DEPOSIT or count < MIN_DEPOSIT_COUNT:
+        await state.clear()
+        return await message.answer("⚠️ Tài khoản chưa đáp ứng điều kiện nhận thưởng.", reply_markup=main_kb(message.from_user.id))
+    await state.update_data(stk_last4=digits)
+    await state.set_state(OrderForm.confirm)
+    await message.answer(
+        "🔎 <b>XÁC NHẬN THÔNG TIN ĐƠN</b>\\n\\n"
+        f"🎮 Site: <b>{esc(data['site_name'])}</b>\\n"
+        f"🎟 Mã sản phẩm: <code>{esc(data['product_code'])}</code>\\n"
+        f"👤 Tài khoản game: <b>{esc(data['account_name'])}</b>\\n"
+        f"🏦 4 số cuối STK: <code>{digits}</code>\\n"
+        f"💰 Giá đơn: <b>{money(price)}</b>\\n\\n"
+        "Vui lòng kiểm tra trước khi xác nhận.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ XÁC NHẬN ĐẶT ĐƠN", callback_data="order_confirm")],
+            [InlineKeyboardButton(text="↩️ HỦY / QUAY LẠI", callback_data="home")]
+        ])
+    )
+
+
+@dp.callback_query(F.data == "order_confirm")
+async def order_confirm(call: CallbackQuery, state: FSMContext):
+    if await state.get_state() != OrderForm.confirm.state:
+        return await call.answer("Phiên đặt đơn đã hết hạn. Vui lòng thao tác lại.", show_alert=True)
+    data = await state.get_data()
+    price = int(data["price"])
+    async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("BEGIN IMMEDIATE")
-        cur = await db.execute("SELECT wallet FROM users WHERE user_id=?", (message.from_user.id,))
-        current = (await cur.fetchone())[0]
-        if current < price:
+        cur = await db.execute("SELECT wallet FROM users WHERE user_id=?", (call.from_user.id,))
+        wallet = await cur.fetchone()
+        cur = await db.execute("SELECT active FROM sites WHERE id=?", (data["site_id"],))
+        active = await cur.fetchone()
+        if not wallet or wallet[0] < price or not active or not active[0]:
             await db.rollback()
             await state.clear()
-            return await message.answer("💳 Số dư không đủ. Vui lòng nạp tiền.", reply_markup=main_kb())
-        await db.execute("UPDATE users SET wallet=wallet-? WHERE user_id=?", (price, message.from_user.id))
+            return await call.answer("Số dư không đủ hoặc site đã ngừng hoạt động.", show_alert=True)
+        await db.execute("UPDATE users SET wallet=wallet-? WHERE user_id=? AND wallet>=?", (price, call.from_user.id, price))
         cur = await db.execute(
-            "INSERT INTO orders(user_id,product,account_name,stk_last4,price,status,created_at,updated_at) VALUES(?,?,?,?,?,'pending',?,?)",
-            (message.from_user.id, PRODUCT_NAME, data["account_name"], digits, price, now_text(), now_text())
+            "INSERT INTO orders(user_id,product,product_code,account_name,stk_last4,price,status,created_at,updated_at) VALUES(?,?,?,?,?,?,'pending',?,?)",
+            (call.from_user.id, data["site_name"], data["product_code"], data["account_name"], data["stk_last4"], price, now_text(), now_text())
         )
         order_id = cur.lastrowid
         await db.execute(
             "INSERT INTO transactions(user_id,kind,amount,note,created_at,ref) VALUES(?,?,?,?,?,?)",
-            (message.from_user.id, "order_payment", -price, "Thanh toán đơn HI88", now_text(), f"ORD-{order_id:06d}")
+            (call.from_user.id, "order_payment", -price, f"Thanh toán đơn {data['site_name']}", now_text(), f"ORD-{order_id:06d}")
         )
         await db.commit()
     await state.clear()
-    await message.answer(
-        f"✅ <b>ĐÃ GHI NHẬN ĐƠN HÀNG</b>\n\n"
-        f"🧾 Mã đơn: <code>ORD-{order_id:06d}</code>\n"
-        f"🎁 Sản phẩm: {esc(PRODUCT_LABEL)}\n"
-        f"👤 Tên tài khoản: {esc(data['account_name'])}\n"
-        f"🏦 4 số cuối STK: <code>{digits}</code>\n"
-        f"💰 Đã trừ ví: {money(price)}\n"
+    await call.message.edit_text(
+        f"✅ <b>ĐÃ GHI NHẬN ĐƠN HÀNG</b>\\n\\n"
+        f"🧾 Mã đơn: <code>ORD-{order_id:06d}</code>\\n"
+        f"🎮 Site: <b>{esc(data['site_name'])}</b>\\n"
+        f"🎟 Mã sản phẩm: <code>{esc(data['product_code'])}</code>\\n"
+        f"👤 Tài khoản: {esc(data['account_name'])}\\n"
+        f"🏦 4 số cuối STK: <code>{data['stk_last4']}</code>\\n"
+        f"💰 Đã trừ ví: <b>{money(price)}</b>\\n"
         f"⏳ Trạng thái: Chờ Admin xử lý",
-        reply_markup=main_kb()
+        reply_markup=main_kb(call.from_user.id)
     )
     for admin_id in ADMIN_IDS:
         try:
             await bot.send_message(
                 admin_id,
-                f"📦 <b>ĐƠN MỚI ORD-{order_id:06d}</b>\n"
-                f"User: <code>{message.from_user.id}</code>\n"
-                f"Tài khoản: {esc(data['account_name'])}\n"
-                f"4 số cuối STK: <code>{digits}</code>\n"
+                f"📦 <b>ĐƠN MỚI ORD-{order_id:06d}</b>\\n"
+                f"User: <code>{call.from_user.id}</code>\\n"
+                f"Site: <b>{esc(data['site_name'])}</b> • Mã {esc(data['product_code'])}\\n"
+                f"Tài khoản: {esc(data['account_name'])}\\n"
+                f"4 số cuối STK: <code>{data['stk_last4']}</code>\\n"
                 f"Giá: {money(price)}",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🔄 Đánh dấu đang xử lý", callback_data=f"ordproc:{order_id}")],
+                    [InlineKeyboardButton(text="🔄 Đang xử lý", callback_data=f"ordproc:{order_id}")],
                     [InlineKeyboardButton(text="✅ Hoàn thành", callback_data=f"orddone:{order_id}")],
                     [InlineKeyboardButton(text="↩️ Hoàn tiền", callback_data=f"ordrefund:{order_id}")]
                 ])
             )
         except Exception:
             log.exception("Could not notify admin")
+    await call.answer("Đặt đơn thành công.")
 
 
 @dp.callback_query(F.data == "deposit")
@@ -423,6 +521,19 @@ async def deposit_amount(message: Message, state: FSMContext):
     await message.answer_photo(qr, caption=f"QR nạp tiền • {code}")
 
 
+@dp.callback_query(F.data == "account")
+async def account_screen(call: CallbackQuery):
+    row = await get_user(call.from_user.id)
+    await call.message.edit_text(
+        "👤 <b>THÔNG TIN TÀI KHOẢN</b>\\n\\n"
+        f"🆔 ID: <code>{call.from_user.id}</code>\\n"
+        f"👤 Username: @{esc(call.from_user.username or 'chưa đặt')}\\n"
+        f"💰 Số dư ví: <b>{money(row['wallet'] if row else 0)}</b>",
+        reply_markup=back_kb()
+    )
+    await call.answer()
+
+
 @dp.callback_query(F.data == "history")
 async def history(call: CallbackQuery):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -437,14 +548,14 @@ async def history(call: CallbackQuery):
         )
         deps = await cur.fetchall()
         cur = await db.execute(
-            "SELECT id,product,price,status,created_at FROM orders WHERE user_id=? ORDER BY id DESC LIMIT 10",
+            "SELECT id,product,product_code,price,status,created_at FROM orders WHERE user_id=? ORDER BY id DESC LIMIT 10",
             (call.from_user.id,)
         )
         orders = await cur.fetchall()
     lines = ["📊 <b>LỊCH SỬ GIAO DỊCH</b>", "", "💳 <b>LỊCH SỬ NẠP TIỀN</b>"]
     lines += [f"• {esc(d[0])} | {money(d[1])} | {esc(d[2])} | {esc(d[3])}" for d in deps] or ["• Chưa có lần nạp."]
     lines += ["", "🎁 <b>LỊCH SỬ ĐƠN HÀNG</b>"]
-    lines += [f"• ORD-{o[0]:06d} | {esc(o[1])} | {money(o[2])} | {esc(o[3])}" for o in orders] or ["• Chưa có đơn hàng."]
+    lines += [f"• ORD-{o[0]:06d} | {esc(o[1])} / {esc(o[2])} | {money(o[3])} | {esc(o[4])}" for o in orders] or ["• Chưa có đơn hàng."]
     await call.message.edit_text("\n".join(lines), reply_markup=back_kb())
     await call.answer()
 
@@ -452,10 +563,10 @@ async def history(call: CallbackQuery):
 @dp.callback_query(F.data == "myorders")
 async def myorders(call: CallbackQuery):
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("SELECT id,product,price,status,created_at FROM orders WHERE user_id=? ORDER BY id DESC LIMIT 10", (call.from_user.id,))
+        cur = await db.execute("SELECT id,product,product_code,price,status,created_at FROM orders WHERE user_id=? ORDER BY id DESC LIMIT 10", (call.from_user.id,))
         rows = await cur.fetchall()
     lines = ["⏳ <b>ĐƠN HÀNG CỦA TÔI</b>"]
-    lines += [f"• ORD-{r[0]:06d} | {esc(r[1])} | {money(r[2])} | {esc(r[3])} | {esc(r[4])}" for r in rows] or ["Chưa có đơn hàng."]
+    lines += [f"• ORD-{r[0]:06d} | {esc(r[1])} / {esc(r[2])} | {money(r[3])} | {esc(r[4])} | {esc(r[5])}" for r in rows] or ["Chưa có đơn hàng."]
     await call.message.edit_text("\n".join(lines), reply_markup=back_kb())
     await call.answer()
 
@@ -545,6 +656,29 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
         for i in range(1, 5):
             slots.append(f"STK {i}: {await setting(f'stk{i}', 'Chưa cấu hình')}")
         text = "🏦 <b>4 STK ĐÃ LIÊN KẾT</b>\n" + "\n".join(slots) + "\n\nDùng /setstk để cấu hình từng STK."
+    elif action == "adm_sites":
+        async with aiosqlite.connect(DB_PATH) as db:
+            cur = await db.execute("SELECT id,name,product_code,price,active FROM sites ORDER BY id")
+            rows = await cur.fetchall()
+        lines = ["➕ <b>QUẢN LÝ SITE GAME KHÁC</b>"]
+        lines += [f"• ID {r[0]} | {esc(r[1])} | Mã {esc(r[2])} | {money(r[3])} | {'Đang bật' if r[4] else 'Đã tắt'}" for r in rows]
+        lines += ["", "Dùng các nút bên dưới để thêm site hoặc bật/tắt site."]
+        text = "\\n".join(lines)
+        await call.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ THÊM SITE", callback_data="site_add")],
+            [InlineKeyboardButton(text="🔄 BẬT / TẮT SITE", callback_data="site_toggle_list")],
+            [InlineKeyboardButton(text="↩️ VỀ QUẢN TRỊ", callback_data="admin_home")]
+        ]))
+        return await call.answer()
+    elif action == "adm_notify":
+        await state.set_state(NotifyForm.recipient)
+        await call.message.edit_text("📨 <b>THÔNG BÁO ĐẾN ID RIÊNG</b>\\n\\nNhập Telegram ID người nhận:", reply_markup=back_kb())
+        return await call.answer()
+    elif action == "adm_settings":
+        text = ("⚙️ <b>CÀI ĐẶT HỆ THỐNG</b>\\n"
+                f"Điều kiện tổng nạp: {money(MIN_TOTAL_DEPOSIT)}\\n"
+                f"Số lần nạp tối thiểu: {MIN_DEPOSIT_COUNT}\\n"
+                f"Bot timezone: Asia/Ho_Chi_Minh")
     elif action == "adm_report":
         async with aiosqlite.connect(DB_PATH) as db:
             cur = await db.execute("SELECT COUNT(*),COALESCE(SUM(price),0) FROM orders")
@@ -660,6 +794,179 @@ async def stk_label(message: Message, state: FSMContext):
     await set_setting(f"stk{data['slot']}", f"{(message.text or '').strip()} • ****{data['last4']}")
     await state.clear()
     await message.answer(f"✅ Đã lưu STK {data['slot']}.")
+
+
+@dp.callback_query(F.data == "site_add")
+async def site_add(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return await call.answer("Không có quyền.", show_alert=True)
+    await state.set_state(AdminSiteForm.name)
+    await call.message.edit_text("Nhập tên site game mới:", reply_markup=back_kb())
+    await call.answer()
+
+
+@dp.message(AdminSiteForm.name)
+async def site_add_name(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    name = (message.text or "").strip().upper()
+    if not name or len(name) > 32:
+        return await message.answer("Tên site không hợp lệ (1–32 ký tự).")
+    await state.update_data(site_name=name)
+    await state.set_state(AdminSiteForm.code)
+    await message.answer("Nhập mã sản phẩm (ví dụ 108):")
+
+
+@dp.message(AdminSiteForm.code)
+async def site_add_code(message: Message, state: FSMContext):
+    code = (message.text or "").strip()
+    if not code or len(code) > 32:
+        return await message.answer("Mã sản phẩm không hợp lệ.")
+    await state.update_data(product_code=code)
+    await state.set_state(AdminSiteForm.price)
+    await message.answer("Nhập giá mỗi đơn bằng VNĐ:")
+
+
+@dp.message(AdminSiteForm.price)
+async def site_add_price(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    raw = re.sub(r"\\D", "", message.text or "")
+    if not raw or int(raw) < 1000:
+        return await message.answer("Giá phải từ 1.000đ trở lên.")
+    data = await state.get_data()
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("INSERT INTO sites(name,product_code,price,active,created_at) VALUES(?,?,?,?,?)",
+                             (data["site_name"], data["product_code"], int(raw), 1, now_text()))
+            await db.commit()
+    except aiosqlite.IntegrityError:
+        return await message.answer("Tên site đã tồn tại. Nhập /admin để kiểm tra.")
+    await state.clear()
+    await message.answer(f"✅ Đã thêm site {esc(data['site_name'])} • mã {esc(data['product_code'])} • {money(int(raw))}. Site đã xuất hiện trong danh sách đặt đơn.")
+
+
+@dp.callback_query(F.data.startswith("site_price:"))
+async def site_price_start(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return await call.answer("Không có quyền.", show_alert=True)
+    site_id = int(call.data.split(":")[1])
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT name,product_code,price FROM sites WHERE id=?", (site_id,))
+        row = await cur.fetchone()
+    if not row:
+        return await call.answer("Không tìm thấy site.", show_alert=True)
+    await state.set_state(SitePriceForm.code)
+    await state.update_data(site_id=site_id)
+    await call.message.edit_text(f"🛍️ <b>{esc(row[0])}</b>\\nMã hiện tại: {esc(row[1])}\\nGiá hiện tại: {money(row[2])}\\n\\nNhập mã sản phẩm mới:", reply_markup=back_kb())
+    await call.answer()
+
+
+@dp.message(SitePriceForm.code)
+async def site_price_code(message: Message, state: FSMContext):
+    code = (message.text or "").strip()
+    if not code or len(code) > 32:
+        return await message.answer("Mã sản phẩm không hợp lệ.")
+    await state.update_data(product_code=code)
+    await state.set_state(SitePriceForm.price)
+    await message.answer("Nhập giá mới bằng VNĐ:")
+
+
+@dp.message(SitePriceForm.price)
+async def site_price_value(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    raw = re.sub(r"\\D", "", message.text or "")
+    if not raw or int(raw) < 1000:
+        return await message.answer("Giá không hợp lệ.")
+    data = await state.get_data()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE sites SET product_code=?,price=? WHERE id=?", (data["product_code"], int(raw), data["site_id"]))
+        await db.commit()
+    await state.clear()
+    await message.answer(f"✅ Đã cập nhật mã {esc(data['product_code'])} và giá {money(int(raw))}.")
+
+
+@dp.callback_query(F.data == "site_toggle_list")
+async def site_toggle_list(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return await call.answer("Không có quyền.", show_alert=True)
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT id,name,active FROM sites ORDER BY id")
+        rows = await cur.fetchall()
+    buttons = [[InlineKeyboardButton(text=f"{'🟢' if r[2] else '⚫'} {r[1]} — ĐỔI TRẠNG THÁI", callback_data=f"site_toggle:{r[0]}")] for r in rows]
+    buttons.append([InlineKeyboardButton(text="↩️ QUẢN LÝ SITE", callback_data="adm_sites")])
+    await call.message.edit_text("Chọn site muốn bật hoặc tắt:", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    await call.answer()
+
+
+@dp.callback_query(F.data.startswith("site_toggle:"))
+async def site_toggle(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return await call.answer("Không có quyền.", show_alert=True)
+    site_id = int(call.data.split(":")[1])
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE sites SET active=CASE active WHEN 1 THEN 0 ELSE 1 END WHERE id=?", (site_id,))
+        await db.commit()
+    await call.answer("Đã đổi trạng thái site.")
+    await site_toggle_list(call)
+
+
+@dp.message(NotifyForm.recipient)
+async def notify_recipient(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    raw = (message.text or "").strip()
+    if not raw.isdigit():
+        return await message.answer("Telegram ID phải là dãy số.")
+    await state.update_data(recipient=int(raw))
+    await state.set_state(NotifyForm.content)
+    await message.answer("Nhập nội dung thông báo. Có thể dùng emoji, xuống dòng và đường dẫn:")
+
+
+@dp.message(NotifyForm.content)
+async def notify_content(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    content = (message.text or "").strip()
+    if not content or len(content) > 4000:
+        return await message.answer("Nội dung không được để trống và tối đa 4.000 ký tự.")
+    await state.update_data(content=content)
+    data = await state.get_data()
+    await state.set_state(NotifyForm.confirm)
+    await message.answer(
+        "🔎 <b>XÁC NHẬN GỬI THÔNG BÁO</b>\\n\\n"
+        f"👤 Người nhận ID: <code>{data['recipient']}</code>\\n"
+        f"📝 Nội dung:\\n{esc(content)}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ XÁC NHẬN GỬI", callback_data="notify_send")],
+            [InlineKeyboardButton(text="❌ HỦY", callback_data="admin_home")]
+        ])
+    )
+
+
+@dp.callback_query(F.data == "notify_send")
+async def notify_send(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return await call.answer("Không có quyền.", show_alert=True)
+    if await state.get_state() != NotifyForm.confirm.state:
+        return await call.answer("Phiên gửi thông báo đã hết hạn.", show_alert=True)
+    data = await state.get_data()
+    try:
+        await bot.send_message(data["recipient"], data["content"])
+        result = "success"
+        msg = "✅ Gửi thông báo thành công."
+    except Exception as exc:
+        result = f"failed: {type(exc).__name__}"
+        msg = "⚠️ Không gửi được. Người nhận có thể chưa từng mở bot hoặc đã chặn bot."
+        log.warning("Admin notification failed to %s: %s", data["recipient"], exc)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("INSERT INTO transactions(user_id,kind,amount,note,created_at,ref) VALUES(?,?,?,?,?,?)",
+                         (call.from_user.id, "admin_notification", 0, f"To {data['recipient']} | {result} | {data['content'][:500]}", now_text(), str(data["recipient"])))
+        await db.commit()
+    await state.clear()
+    await call.message.edit_text(f"{msg}\\nID người nhận: <code>{data['recipient']}</code>\\nKết quả: <code>{esc(result)}</code>", reply_markup=admin_kb())
+    await call.answer()
 
 
 async def sepay_webhook(request: web.Request):
