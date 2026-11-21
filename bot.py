@@ -196,7 +196,7 @@ async def show_home(target, user):
         await target.message.edit_text(text, reply_markup=main_kb(user.id))
         await target.answer()
     else:
-        await target.answer(text, reply_markup=main_kb())
+        await target.answer(text, reply_markup=main_kb(user.id))
 
 
 class OrderForm(StatesGroup):
