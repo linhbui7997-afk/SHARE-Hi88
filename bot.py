@@ -205,10 +205,10 @@ async def home_text(user):
     time_text = now.strftime("%H:%M:%S")
     username = f"@{esc(user.username)}" if user.username else esc(user.first_name or "bạn")
     return (
-        f"📆 {date_text}   ⏰ {time_text} (GMT+7)\\n"
-        f"💬 Xin chào, {username}\\n"
-        f"⊕ Số Dư Ví : <b>{money(wallet)}</b>\\n"
-        f"✐ ID : <code>{user.id}</code>\\n"
+        f"📆 {date_text}   ⏰ {time_text} (GMT+7)\n"
+        f"💬 Xin chào, {username}\n"
+        f"⊕ Số Dư Ví : <b>{money(wallet)}</b>\n"
+        f"✐ ID : <code>{user.id}</code>\n"
         f"⏳ Đơn Hàng : <b>{waiting}</b>"
     )
 
@@ -299,8 +299,8 @@ async def buy(call: CallbackQuery, state: FSMContext):
     buttons = [[InlineKeyboardButton(text=f"🎁 {r[1]} • Mã {r[2]} • {money(r[3])}", callback_data=f"site:{r[0]}")] for r in sites]
     buttons.append([InlineKeyboardButton(text="↩️ QUAY LẠI", callback_data="home")])
     await call.message.edit_text(
-        "🎁 <b>ĐẶT ĐƠN KM SHARE</b>\\n\\n"
-        "Vui lòng chọn site game muốn đặt đơn.\\n"
+        "🎁 <b>ĐẶT ĐƠN KM SHARE</b>\n\n"
+        "Vui lòng chọn site game muốn đặt đơn.\n"
         "Mã 108 là mã sản phẩm, không phải số lượng.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
@@ -321,12 +321,12 @@ async def choose_site(call: CallbackQuery, state: FSMContext):
     await state.clear()
     await state.update_data(site_id=site[0], site_name=site[1], product_code=site[2], price=site[3])
     await call.message.edit_text(
-        f"🎁 <b>{esc(site[1])}</b>\\n"
-        f"🎟 Mã sản phẩm: <code>{esc(site[2])}</code>\\n"
-        f"💰 Giá mỗi đơn: <b>{money(site[3])}</b>\\n\\n"
-        f"⚙️ <b>ĐIỀU KIỆN ĐẶT ĐƠN</b>\\n"
-        f"• Tổng nạp thành công trên {money(MIN_TOTAL_DEPOSIT)}.\\n"
-        f"• Có ít nhất {MIN_DEPOSIT_COUNT} lần nạp thành công.\\n\\n"
+        f"🎁 <b>{esc(site[1])}</b>\n"
+        f"🎟 Mã sản phẩm: <code>{esc(site[2])}</code>\n"
+        f"💰 Giá mỗi đơn: <b>{money(site[3])}</b>\n\n"
+        f"⚙️ <b>ĐIỀU KIỆN ĐẶT ĐƠN</b>\n"
+        f"• Tổng nạp thành công trên {money(MIN_TOTAL_DEPOSIT)}.\n"
+        f"• Có ít nhất {MIN_DEPOSIT_COUNT} lần nạp thành công.\n\n"
         "Nhấn tiếp tục để nhập thông tin.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🛒 TIẾP TỤC", callback_data="order_begin")],
@@ -355,7 +355,7 @@ async def order_begin(call: CallbackQuery, state: FSMContext):
         return
     await state.set_state(OrderForm.account_name)
     await call.message.edit_text(
-        f"📝 <b>THÔNG TIN ĐẶT HÀNG • {esc(data['site_name'])}</b>\\n\\n"
+        f"📝 <b>THÔNG TIN ĐẶT HÀNG • {esc(data['site_name'])}</b>\n\n"
         f"👤 Vui lòng nhập tên tài khoản {esc(data['site_name'])}:",
         reply_markup=back_kb()
     )
@@ -378,7 +378,7 @@ async def order_account(message: Message, state: FSMContext):
 
 @dp.message(OrderForm.stk_last4)
 async def order_stk(message: Message, state: FSMContext):
-    digits = re.sub(r"\\D", "", message.text or "")
+    digits = re.sub(r"\D", "", message.text or "")
     if len(digits) != 4:
         return await message.answer("⚠️ Vui lòng nhập đúng 4 chữ số cuối của STK.")
     data = await state.get_data()
@@ -399,12 +399,12 @@ async def order_stk(message: Message, state: FSMContext):
     await state.update_data(stk_last4=digits)
     await state.set_state(OrderForm.confirm)
     await message.answer(
-        "🔎 <b>XÁC NHẬN THÔNG TIN ĐƠN</b>\\n\\n"
-        f"🎮 Site: <b>{esc(data['site_name'])}</b>\\n"
-        f"🎟 Mã sản phẩm: <code>{esc(data['product_code'])}</code>\\n"
-        f"👤 Tài khoản game: <b>{esc(data['account_name'])}</b>\\n"
-        f"🏦 4 số cuối STK: <code>{digits}</code>\\n"
-        f"💰 Giá đơn: <b>{money(price)}</b>\\n\\n"
+        "🔎 <b>XÁC NHẬN THÔNG TIN ĐƠN</b>\n\n"
+        f"🎮 Site: <b>{esc(data['site_name'])}</b>\n"
+        f"🎟 Mã sản phẩm: <code>{esc(data['product_code'])}</code>\n"
+        f"👤 Tài khoản game: <b>{esc(data['account_name'])}</b>\n"
+        f"🏦 4 số cuối STK: <code>{digits}</code>\n"
+        f"💰 Giá đơn: <b>{money(price)}</b>\n\n"
         "Vui lòng kiểm tra trước khi xác nhận.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ XÁC NHẬN ĐẶT ĐƠN", callback_data="order_confirm")],
@@ -442,13 +442,13 @@ async def order_confirm(call: CallbackQuery, state: FSMContext):
         await db.commit()
     await state.clear()
     await call.message.edit_text(
-        f"✅ <b>ĐÃ GHI NHẬN ĐƠN HÀNG</b>\\n\\n"
-        f"🧾 Mã đơn: <code>ORD-{order_id:06d}</code>\\n"
-        f"🎮 Site: <b>{esc(data['site_name'])}</b>\\n"
-        f"🎟 Mã sản phẩm: <code>{esc(data['product_code'])}</code>\\n"
-        f"👤 Tài khoản: {esc(data['account_name'])}\\n"
-        f"🏦 4 số cuối STK: <code>{data['stk_last4']}</code>\\n"
-        f"💰 Đã trừ ví: <b>{money(price)}</b>\\n"
+        f"✅ <b>ĐÃ GHI NHẬN ĐƠN HÀNG</b>\n\n"
+        f"🧾 Mã đơn: <code>ORD-{order_id:06d}</code>\n"
+        f"🎮 Site: <b>{esc(data['site_name'])}</b>\n"
+        f"🎟 Mã sản phẩm: <code>{esc(data['product_code'])}</code>\n"
+        f"👤 Tài khoản: {esc(data['account_name'])}\n"
+        f"🏦 4 số cuối STK: <code>{data['stk_last4']}</code>\n"
+        f"💰 Đã trừ ví: <b>{money(price)}</b>\n"
         f"⏳ Trạng thái: Chờ Admin xử lý",
         reply_markup=main_kb(call.from_user.id)
     )
@@ -456,11 +456,11 @@ async def order_confirm(call: CallbackQuery, state: FSMContext):
         try:
             await bot.send_message(
                 admin_id,
-                f"📦 <b>ĐƠN MỚI ORD-{order_id:06d}</b>\\n"
-                f"User: <code>{call.from_user.id}</code>\\n"
-                f"Site: <b>{esc(data['site_name'])}</b> • Mã {esc(data['product_code'])}\\n"
-                f"Tài khoản: {esc(data['account_name'])}\\n"
-                f"4 số cuối STK: <code>{data['stk_last4']}</code>\\n"
+                f"📦 <b>ĐƠN MỚI ORD-{order_id:06d}</b>\n"
+                f"User: <code>{call.from_user.id}</code>\n"
+                f"Site: <b>{esc(data['site_name'])}</b> • Mã {esc(data['product_code'])}\n"
+                f"Tài khoản: {esc(data['account_name'])}\n"
+                f"4 số cuối STK: <code>{data['stk_last4']}</code>\n"
                 f"Giá: {money(price)}",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="🔄 Đang xử lý", callback_data=f"ordproc:{order_id}")],
@@ -525,9 +525,9 @@ async def deposit_amount(message: Message, state: FSMContext):
 async def account_screen(call: CallbackQuery):
     row = await get_user(call.from_user.id)
     await call.message.edit_text(
-        "👤 <b>THÔNG TIN TÀI KHOẢN</b>\\n\\n"
-        f"🆔 ID: <code>{call.from_user.id}</code>\\n"
-        f"👤 Username: @{esc(call.from_user.username or 'chưa đặt')}\\n"
+        "👤 <b>THÔNG TIN TÀI KHOẢN</b>\n\n"
+        f"🆔 ID: <code>{call.from_user.id}</code>\n"
+        f"👤 Username: @{esc(call.from_user.username or 'chưa đặt')}\n"
         f"💰 Số dư ví: <b>{money(row['wallet'] if row else 0)}</b>",
         reply_markup=back_kb()
     )
@@ -663,7 +663,7 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
         lines = ["➕ <b>QUẢN LÝ SITE GAME KHÁC</b>"]
         lines += [f"• ID {r[0]} | {esc(r[1])} | Mã {esc(r[2])} | {money(r[3])} | {'Đang bật' if r[4] else 'Đã tắt'}" for r in rows]
         lines += ["", "Dùng các nút bên dưới để thêm site hoặc bật/tắt site."]
-        text = "\\n".join(lines)
+        text = "\n".join(lines)
         await call.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="➕ THÊM SITE", callback_data="site_add")],
             [InlineKeyboardButton(text="🔄 BẬT / TẮT SITE", callback_data="site_toggle_list")],
@@ -672,12 +672,12 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
         return await call.answer()
     elif action == "adm_notify":
         await state.set_state(NotifyForm.recipient)
-        await call.message.edit_text("📨 <b>THÔNG BÁO ĐẾN ID RIÊNG</b>\\n\\nNhập Telegram ID người nhận:", reply_markup=back_kb())
+        await call.message.edit_text("📨 <b>THÔNG BÁO ĐẾN ID RIÊNG</b>\n\nNhập Telegram ID người nhận:", reply_markup=back_kb())
         return await call.answer()
     elif action == "adm_settings":
-        text = ("⚙️ <b>CÀI ĐẶT HỆ THỐNG</b>\\n"
-                f"Điều kiện tổng nạp: {money(MIN_TOTAL_DEPOSIT)}\\n"
-                f"Số lần nạp tối thiểu: {MIN_DEPOSIT_COUNT}\\n"
+        text = ("⚙️ <b>CÀI ĐẶT HỆ THỐNG</b>\n"
+                f"Điều kiện tổng nạp: {money(MIN_TOTAL_DEPOSIT)}\n"
+                f"Số lần nạp tối thiểu: {MIN_DEPOSIT_COUNT}\n"
                 f"Bot timezone: Asia/Ho_Chi_Minh")
     elif action == "adm_report":
         async with aiosqlite.connect(DB_PATH) as db:
@@ -831,7 +831,7 @@ async def site_add_code(message: Message, state: FSMContext):
 async def site_add_price(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
-    raw = re.sub(r"\\D", "", message.text or "")
+    raw = re.sub(r"\D", "", message.text or "")
     if not raw or int(raw) < 1000:
         return await message.answer("Giá phải từ 1.000đ trở lên.")
     data = await state.get_data()
@@ -858,7 +858,7 @@ async def site_price_start(call: CallbackQuery, state: FSMContext):
         return await call.answer("Không tìm thấy site.", show_alert=True)
     await state.set_state(SitePriceForm.code)
     await state.update_data(site_id=site_id)
-    await call.message.edit_text(f"🛍️ <b>{esc(row[0])}</b>\\nMã hiện tại: {esc(row[1])}\\nGiá hiện tại: {money(row[2])}\\n\\nNhập mã sản phẩm mới:", reply_markup=back_kb())
+    await call.message.edit_text(f"🛍️ <b>{esc(row[0])}</b>\nMã hiện tại: {esc(row[1])}\nGiá hiện tại: {money(row[2])}\n\nNhập mã sản phẩm mới:", reply_markup=back_kb())
     await call.answer()
 
 
@@ -876,7 +876,7 @@ async def site_price_code(message: Message, state: FSMContext):
 async def site_price_value(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
-    raw = re.sub(r"\\D", "", message.text or "")
+    raw = re.sub(r"\D", "", message.text or "")
     if not raw or int(raw) < 1000:
         return await message.answer("Giá không hợp lệ.")
     data = await state.get_data()
@@ -935,9 +935,9 @@ async def notify_content(message: Message, state: FSMContext):
     data = await state.get_data()
     await state.set_state(NotifyForm.confirm)
     await message.answer(
-        "🔎 <b>XÁC NHẬN GỬI THÔNG BÁO</b>\\n\\n"
-        f"👤 Người nhận ID: <code>{data['recipient']}</code>\\n"
-        f"📝 Nội dung:\\n{esc(content)}",
+        "🔎 <b>XÁC NHẬN GỬI THÔNG BÁO</b>\n\n"
+        f"👤 Người nhận ID: <code>{data['recipient']}</code>\n"
+        f"📝 Nội dung:\n{esc(content)}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ XÁC NHẬN GỬI", callback_data="notify_send")],
             [InlineKeyboardButton(text="❌ HỦY", callback_data="admin_home")]
@@ -953,7 +953,7 @@ async def notify_send(call: CallbackQuery, state: FSMContext):
         return await call.answer("Phiên gửi thông báo đã hết hạn.", show_alert=True)
     data = await state.get_data()
     try:
-        await bot.send_message(data["recipient"], data["content"])
+        await bot.send_message(data["recipient"], data["content"], parse_mode=None)
         result = "success"
         msg = "✅ Gửi thông báo thành công."
     except Exception as exc:
@@ -965,7 +965,7 @@ async def notify_send(call: CallbackQuery, state: FSMContext):
                          (call.from_user.id, "admin_notification", 0, f"To {data['recipient']} | {result} | {data['content'][:500]}", now_text(), str(data["recipient"])))
         await db.commit()
     await state.clear()
-    await call.message.edit_text(f"{msg}\\nID người nhận: <code>{data['recipient']}</code>\\nKết quả: <code>{esc(result)}</code>", reply_markup=admin_kb())
+    await call.message.edit_text(f"{msg}\nID người nhận: <code>{data['recipient']}</code>\nKết quả: <code>{esc(result)}</code>", reply_markup=admin_kb())
     await call.answer()
 
 
