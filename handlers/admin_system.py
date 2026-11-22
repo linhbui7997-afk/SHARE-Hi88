@@ -171,11 +171,26 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not await allowed(call): return
         theme = call.data.rsplit(":", 1)[-1]
         if theme not in ("dark", "light"): return await call.answer("Giá trị không hợp lệ.", show_alert=True)
+        await call.message.edit_text(
+            f"⚠️ <b>XÁC NHẬN CHUYỂN SANG {theme.upper()} MODE?</b>",
+            reply_markup=_kb([[("✅ XÁC NHẬN", f"bs:themeconfirm:{theme}"), ("❌ HỦY", "bs:ui")]])
+        )
+        await call.answer()
+
+    @dp.callback_query(F.data.startswith("bs:themeconfirm:"))
+    async def bs_theme_confirm(call: CallbackQuery):
+        if not await allowed(call): return
+        theme = call.data.rsplit(":", 1)[-1]
+        if theme not in ("dark", "light"): return await call.answer("Giá trị không hợp lệ.", show_alert=True)
         async with aiosqlite.connect(db_path) as db:
             await db.execute("INSERT INTO settings(key,value) VALUES('beni_ui_theme',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (theme,))
             await db.commit()
         await audit(call.from_user.id, "set_ui_theme", details=theme)
-        await bs_ui(call)
+        await call.message.edit_text(
+            f"🎨 <b>UI MANAGER</b>\\n\\nChế độ hiển thị đã lưu: <b>{esc(theme.upper())}</b>\\n\\nLưu ý: theme chỉ là cấu hình nội bộ; Telegram chat không thể đổi màu giao diện ứng dụng Telegram.",
+            reply_markup=_kb([[("🌙 DARK MODE", "bs:theme:dark"), ("☀️ LIGHT MODE", "bs:theme:light")], [("↩️ QUAY LẠI", "bs:home")]])
+        )
+        await call.answer("Đã lưu giao diện.")
 
     @dp.callback_query(F.data == "bs:notify")
     async def bs_notify(call: CallbackQuery):
@@ -196,11 +211,30 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not await allowed(call): return
         value = call.data.rsplit(":", 1)[-1]
         if value not in ("0", "1"): return await call.answer("Giá trị không hợp lệ.", show_alert=True)
+        await call.message.edit_text(
+            f"⚠️ <b>XÁC NHẬN {'BẬT' if value == '1' else 'TẮT'} THÔNG BÁO TỰ ĐỘNG?</b>",
+            reply_markup=_kb([[("✅ XÁC NHẬN", f"bs:autoconfirm:{value}"), ("❌ HỦY", "bs:notify")]])
+        )
+        await call.answer()
+
+    @dp.callback_query(F.data.startswith("bs:autoconfirm:"))
+    async def bs_auto_confirm(call: CallbackQuery):
+        if not await allowed(call): return
+        value = call.data.rsplit(":", 1)[-1]
+        if value not in ("0", "1"): return await call.answer("Giá trị không hợp lệ.", show_alert=True)
         async with aiosqlite.connect(db_path) as db:
             await db.execute("INSERT INTO settings(key,value) VALUES('beni_auto_announce',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (value,))
             await db.commit()
         await audit(call.from_user.id, "set_auto_announce", details=value)
-        await bs_notify(call)
+        enabled = value
+        await call.message.edit_text(
+            "📢 <b>NOTIFICATION MANAGER</b>\\n\\n"
+            f"Kênh thông báo đơn: <code>{esc(os.getenv('ORDER_ANNOUNCE_CHANNEL', '@sharegame1'))}</code>\\n"
+            f"Thông báo tự động: {'🟢 BẬT' if enabled == '1' else '⚫ TẮT'}\\n\\n"
+            "Cấu hình kênh có thể thay đổi bằng Railway Variables: ORDER_ANNOUNCE_CHANNEL.",
+            reply_markup=_kb([[("🔔 BẬT TỰ ĐỘNG", "bs:auto:1"), ("🔕 TẮT TỰ ĐỘNG", "bs:auto:0")], [("↩️ QUAY LẠI", "bs:home")]])
+        )
+        await call.answer("Đã lưu cấu hình thông báo.")
 
     @dp.callback_query(F.data == "bs:db")
     async def bs_db(call: CallbackQuery):
