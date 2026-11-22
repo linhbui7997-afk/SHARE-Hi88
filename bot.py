@@ -1178,11 +1178,21 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
         return await call.answer()
     elif action == "adm_price":
         async with aiosqlite.connect(DB_PATH) as db:
-            cur = await db.execute("SELECT id,name,product_code,price FROM sites ORDER BY id")
+            cur = await db.execute("SELECT id,name,product_code,price,description,active FROM sites ORDER BY id")
             rows = await cur.fetchall()
-        buttons = [[InlineKeyboardButton(text=f"{r[1]} • {r[2]} • {money(r[3])}", callback_data=f"site_price:{r[0]}")] for r in rows]
+        buttons = [[InlineKeyboardButton(
+            text=f"{'🟢' if r[5] else '⚫'} {r[1]} • Mã {r[2]} • {money(r[3])}",
+            callback_data=f"site_price:{r[0]}"
+        )] for r in rows]
         buttons.append([InlineKeyboardButton(text="↩️ VỀ QUẢN TRỊ", callback_data="admin_home")])
-        await call.message.edit_text("👑 <b>QUẢN TRỊ KM SHARE HI88</b>\n\n🛍️ <b>QUẢN LÝ SẢN PHẨM – GIÁ</b>\n\nChọn site để chỉnh mã sản phẩm, giá và mô tả:", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+        await call.message.edit_text(
+            "👑 <b>QUẢN TRỊ KM SHARE HI88</b>\\n\\n"
+            "🛍️ <b>QUẢN LÝ SẢN PHẨM – GIÁ</b>\\n\\n"
+            "Chọn site để chỉnh mã sản phẩm, giá bán và mô tả.\\n"
+            "⚠️ Khi lưu nội dung mới, nội dung cũ của trường đó sẽ được thay thế hoàn toàn.\\n"
+            "Mô tả nhập dấu <code>-</code> nếu muốn xóa mô tả hiện tại.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
         return await call.answer()
     elif action == "adm_stks":
         text = (
@@ -1405,18 +1415,28 @@ async def site_price_start(call: CallbackQuery, state: FSMContext):
         return await call.answer("Không tìm thấy site.", show_alert=True)
     await state.set_state(SitePriceForm.code)
     await state.update_data(site_id=site_id)
-    await call.message.edit_text(f"🛍️ <b>{esc(row[0])}</b>\nMã hiện tại: {esc(row[1])}\nGiá hiện tại: {money(row[2])}\nMô tả hiện tại: {esc(row[3] or 'Chưa có')}\n\nNhập mã sản phẩm mới:", reply_markup=back_kb())
+    await call.message.edit_text(
+        f"👑 <b>CHỈNH SỬA SITE {esc(row[0])}</b>\\n\\n"
+        f"🔖 Mã hiện tại: <code>{esc(row[1])}</code>\\n"
+        f"💰 Giá hiện tại: <b>{money(row[2])}</b>\\n"
+        f"📝 Mô tả hiện tại: {esc(row[3] or 'Chưa có')}\\n\\n"
+        "BƯỚC 1/3 — Nhập mã sản phẩm mới.\\n"
+        "⚠️ Mã mới sẽ thay thế mã cũ.",
+        reply_markup=back_kb()
+    )
     await call.answer()
 
 
 @dp.message(SitePriceForm.code)
 async def site_price_code(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
     code = (message.text or "").strip()
     if not code or len(code) > 32:
         return await message.answer("Mã sản phẩm không hợp lệ.")
     await state.update_data(product_code=code)
     await state.set_state(SitePriceForm.price)
-    await message.answer("Nhập giá mới bằng VNĐ:")
+    await message.answer("BƯỚC 2/3 — Nhập giá mới bằng VNĐ. Giá mới sẽ thay thế giá cũ:")
 
 
 @dp.message(SitePriceForm.price)
@@ -1428,7 +1448,7 @@ async def site_price_value(message: Message, state: FSMContext):
         return await message.answer("Giá không hợp lệ.")
     await state.update_data(site_price=int(raw))
     await state.set_state(SitePriceForm.description)
-    await message.answer("Nhập mô tả mới cho sản phẩm (gửi dấu - để xóa mô tả):")
+    await message.answer("BƯỚC 3/3 — Nhập mô tả mới cho sản phẩm. Nội dung mới sẽ thay thế hoàn toàn mô tả cũ. Gửi dấu - nếu muốn xóa mô tả:")
 
 
 @dp.message(SitePriceForm.description)
@@ -1439,10 +1459,30 @@ async def site_price_description(message: Message, state: FSMContext):
     if description == "-": description = ""
     if len(description) > 500: return await message.answer("Mô tả tối đa 500 ký tự.")
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE sites SET product_code=?,price=?,description=? WHERE id=?", (data["product_code"], data["site_price"], description, data["site_id"]))
+        cur = await db.execute(
+            "UPDATE sites SET product_code=?,price=?,description=? WHERE id=?",
+            (data["product_code"], data["site_price"], description, data["site_id"])
+        )
+        if cur.rowcount != 1:
+            await db.rollback()
+            await state.clear()
+            return await message.answer("❌ Không tìm thấy site để cập nhật. Dữ liệu cũ không bị thay đổi.")
+        await db.execute(
+            "INSERT INTO transactions(user_id,kind,amount,note,created_at,ref) VALUES(?,?,?,?,?,?)",
+            (message.from_user.id, "admin_site_update", 0,
+             f"Site ID {data['site_id']}: replaced product code, price and description",
+             now_text(), str(data["site_id"]))
+        )
         await db.commit()
     await state.clear()
-    await message.answer(f"✅ Đã cập nhật mã sản phẩm, giá {money(data['site_price'])} và mô tả.")
+    await message.answer(
+        f"✅ <b>ĐÃ CẬP NHẬT SITE</b>\\n\\n"
+        f"🔖 Mã sản phẩm mới: <code>{esc(data['product_code'])}</code>\\n"
+        f"💰 Giá mới: <b>{money(data['site_price'])}</b>\\n"
+        f"📝 Mô tả: {esc(description or 'Đã xóa')}</b>\\n\\n"
+        "Nội dung mới đã thay thế nội dung cũ. Các đơn hàng đã tạo trước đó không bị thay đổi.",
+        reply_markup=admin_kb()
+    )
 
 
 @dp.callback_query(F.data == "site_toggle_list")
