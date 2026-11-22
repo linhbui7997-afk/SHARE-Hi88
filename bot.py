@@ -1186,7 +1186,7 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
                 f"👤 Khách: @{esc(username) if username else 'Không có username'} (<code>{uid}</code>)\n"
                 f"🎁 Gói: <b>KM SHARE {esc(product)}</b> • Mã {esc(code)}\n"
                 f"🎮 Tài khoản: <code>{esc(account)}</code>\n"
-                f"🏦 6 số cuối: <code>{esc(last4)}</code>\n"
+                f"🏦 {required_stk_digits(product)} số cuối STK: <code>{esc(last4)}</code>\n"
                 f"💰 Giá trị: <b>{money(price)}</b>\n"
                 f"📌 Trạng thái: <b>{'Đang xử lý' if status == 'processing' else 'Chờ xét duyệt'}</b>\n"
                 f"🕒 Thời gian: {esc(created)}"
