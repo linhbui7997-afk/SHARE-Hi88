@@ -12,12 +12,15 @@ import aiosqlite
 from aiogram import F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 
 VERSION = "1.1.0"
 
 class AdminAddForm(StatesGroup):
     user_id = State()
+
+class BotSettingForm(StatesGroup):
+    value = State()
 
 PERMISSIONS = [("bot.manage", "Quản lý Bot"), ("users.read", "Xem User"), ("users.manage", "Quản lý User"), ("orders.review", "Duyệt đơn"), ("deposits.review", "Duyệt nạp tiền"), ("wallet.adjust", "Điều chỉnh ví"), ("notifications.send", "Gửi thông báo"), ("reports.read", "Xem thống kê"), ("settings.manage", "Cài đặt hệ thống"), ("admins.manage", "Quản lý Admin"), ("database.backup", "Sao lưu Database"), ("maintenance.manage", "Bảo trì")]
 
@@ -140,17 +143,109 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
     async def bs_bot(call: CallbackQuery):
         if not await allowed(call): return
         me = await call.bot.get_me()
+        try:
+            commands = await call.bot.get_my_commands()
+            command_text = "\\n".join(f"/{x.command} — {x.description}" for x in commands) or "Chưa cài lệnh."
+        except Exception:
+            command_text = "Không đọc được danh sách lệnh."
         body = (
-            f"Trạng thái: 🟢 Đang chạy\nTên Bot: {esc(me.full_name)}\n"
-            f"Username: @{esc(me.username)}\nPhiên bản panel: {VERSION}\n\n"
-            "Đổi tên, username, ảnh đại diện, mô tả và lệnh Bot được thực hiện an toàn qua "
-            "BotFather. Không nhập Bot Token vào chat. Bật/tắt toàn bộ tiến trình cần thao tác Railway."
+            f"Trạng thái: 🟢 Đang chạy\\nTên Bot: {esc(me.full_name)}\\n"
+            f"Username: @{esc(me.username)}\\nPhiên bản panel: {VERSION}\\n\\n"
+            f"<b>LỆNH BOT</b>\\n{esc(command_text)}\\n\\n"
+            "Có thể chỉnh tên, mô tả, mô tả ngắn và danh sách lệnh ngay tại đây. "
+            "Username và ảnh đại diện phải đổi qua @BotFather. Không gửi Token vào chat."
         )
         await show(call, "🤖 <b>BOT SETTINGS</b>", body, [
+            [("✏️ ĐỔI TÊN BOT", "bs:botedit:name"), ("📝 MÔ TẢ BOT", "bs:botedit:description")],
+            [("📌 MÔ TẢ NGẮN", "bs:botedit:short"), ("📋 QUẢN LÝ LỆNH", "bs:botedit:commands")],
             [("🔄 KIỂM TRA TRẠNG THÁI", "bs:bot")],
             [("↩️ QUAY LẠI", "bs:home")]
         ])
         await audit(call.from_user.id, "view_bot_settings")
+
+    @dp.callback_query(F.data.startswith("bs:botedit:"))
+    async def bs_bot_edit(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        field = call.data.rsplit(":", 1)[-1]
+        prompts = {
+            "name": ("ĐỔI TÊN BOT", "Gửi tên mới (1–64 ký tự)."),
+            "description": ("ĐỔI MÔ TẢ BOT", "Gửi mô tả mới (tối đa 512 ký tự)."),
+            "short": ("ĐỔI MÔ TẢ NGẮN", "Gửi mô tả ngắn (tối đa 120 ký tự)."),
+            "commands": ("QUẢN LÝ LỆNH", "Gửi từng dòng theo mẫu: start - Mở menu\\nhelp - Trợ giúp\\nChỉ dùng chữ thường, số và dấu gạch dưới cho tên lệnh.")
+        }
+        if field not in prompts: return await call.answer("Mục không hợp lệ.", show_alert=True)
+        await state.update_data(bot_field=field)
+        await state.set_state(BotSettingForm.value)
+        title, prompt = prompts[field]
+        await call.message.edit_text(f"✏️ <b>{title}</b>\\n\\n{prompt}", reply_markup=_kb([[("❌ HỦY", "bs:botcancel")]]))
+        await call.answer()
+
+    @dp.callback_query(F.data == "bs:botcancel")
+    async def bs_bot_cancel(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        await state.clear()
+        await call.message.edit_text("Đã hủy chỉnh sửa.", reply_markup=_kb([[("↩️ BOT SETTINGS", "bs:bot")]]))
+        await call.answer()
+
+    @dp.message(BotSettingForm.value)
+    async def bs_bot_value(message, state: FSMContext):
+        if message.from_user.id not in admin_ids: return
+        data = await state.get_data()
+        field = data.get("bot_field")
+        value = (message.text or "").strip()
+        limits = {"name": 64, "description": 512, "short": 120, "commands": 3000}
+        if field not in limits or not value or len(value) > limits[field]:
+            return await message.answer("Nội dung không hợp lệ hoặc vượt giới hạn. Hãy gửi lại.")
+        if field == "commands":
+            parsed = []
+            for line in value.splitlines():
+                if not line.strip(): continue
+                if " - " not in line:
+                    return await message.answer("Sai định dạng. Mỗi dòng: start - Mở menu")
+                command, description = line.split(" - ", 1)
+                command = command.strip()
+                description = description.strip()
+                if not command.replace("_", "").isalnum() or command.lower() != command or not 1 <= len(command) <= 32 or not description or len(description) > 256:
+                    return await message.answer(f"Lệnh không hợp lệ: {esc(command)}")
+                parsed.append((command, description))
+            if not parsed or len(parsed) > 100:
+                return await message.answer("Cần từ 1 đến 100 lệnh hợp lệ.")
+            value = "\\n".join(f"{c} - {d}" for c,d in parsed)
+        await state.update_data(bot_value=value)
+        preview = esc(value[:2500])
+        await message.answer(
+            f"⚠️ <b>XÁC NHẬN CẬP NHẬT BOT?</b>\\n\\n{preview}",
+            reply_markup=_kb([[("✅ XÁC NHẬN", "bs:botconfirm"), ("❌ HỦY", "bs:botcancel")]])
+        )
+
+    @dp.callback_query(F.data == "bs:botconfirm")
+    async def bs_bot_confirm(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        data = await state.get_data()
+        field, value = data.get("bot_field"), data.get("bot_value")
+        try:
+            if field == "name":
+                await call.bot.set_my_name(value)
+            elif field == "description":
+                await call.bot.set_my_description(value)
+            elif field == "short":
+                await call.bot.set_my_short_description(value)
+            elif field == "commands":
+                parsed = []
+                for line in value.splitlines():
+                    command, description = line.split(" - ", 1)
+                    parsed.append(BotCommand(command=command, description=description))
+                await call.bot.set_my_commands(parsed)
+            else:
+                return await call.answer("Không tìm thấy nội dung chờ xác nhận.", show_alert=True)
+        except Exception as exc:
+            await state.clear()
+            await call.answer("Telegram từ chối cập nhật: " + str(exc)[:180], show_alert=True)
+            return
+        await audit(call.from_user.id, "update_bot_" + field, details=value[:500])
+        await state.clear()
+        await call.message.edit_text("✅ Đã cập nhật cài đặt Bot thành công.", reply_markup=_kb([[("🤖 BOT SETTINGS", "bs:bot"), ("↩️ BENI SYSTEM", "bs:home")]]))
+        await call.answer("Đã lưu.")
 
     @dp.callback_query(F.data == "bs:users")
     async def bs_users(call: CallbackQuery):
