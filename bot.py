@@ -1479,7 +1479,7 @@ async def site_price_description(message: Message, state: FSMContext):
         f"✅ <b>ĐÃ CẬP NHẬT SITE</b>\\n\\n"
         f"🔖 Mã sản phẩm mới: <code>{esc(data['product_code'])}</code>\\n"
         f"💰 Giá mới: <b>{money(data['site_price'])}</b>\\n"
-        f"📝 Mô tả: {esc(description or 'Đã xóa')}</b>\\n\\n"
+        f"📝 Mô tả: {esc(description or 'Đã xóa')}\\n\\n"
         "Nội dung mới đã thay thế nội dung cũ. Các đơn hàng đã tạo trước đó không bị thay đổi.",
         reply_markup=admin_kb()
     )
