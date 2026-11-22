@@ -23,7 +23,7 @@ def _kb(rows):
     ])
 
 
-def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, now_text, esc):
+def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, now_text, esc, admin_keyboard):
     async def allowed(call):
         if call.from_user.id not in admin_ids:
             await call.answer("⛔ Bạn không có quyền truy cập.", show_alert=True)
@@ -94,7 +94,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
     @dp.callback_query(F.data == "bs:back")
     async def bs_back(call: CallbackQuery):
         if await allowed(call):
-            await call.message.edit_text("👑 <b>QUẢN TRỊ KM SHARE HI88</b>", reply_markup=__import__("bot").admin_kb())
+            await call.message.edit_text("👑 <b>QUẢN TRỊ KM SHARE HI88</b>", reply_markup=admin_keyboard())
             await call.answer()
 
     @dp.callback_query(F.data == "bs:bot")
