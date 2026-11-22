@@ -654,7 +654,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
     async def bs_backup_delete_prompt(call: CallbackQuery):
         if not await allowed(call): return
         name = call.data.split(":", 2)[2]
-        if not re.fullmatch(r"share_hi88_\\d{8}_\\d{6}\\.sqlite3", name):
+        if not re.fullmatch(r"share_hi88_\d{8}_\d{6}\.sqlite3", name):
             return await call.answer("Tên bản sao lưu không hợp lệ.", show_alert=True)
         await call.message.edit_text(
             f"⚠️ <b>XÁC NHẬN XÓA BẢN SAO LƯU?</b>\\n\\n<code>{esc(name)}</code>\\n"
@@ -670,7 +670,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
     async def bs_backup_delete(call: CallbackQuery):
         if not await allowed(call): return
         name = call.data.split(":", 2)[2]
-        if not re.fullmatch(r"share_hi88_\\d{8}_\\d{6}\\.sqlite3", name):
+        if not re.fullmatch(r"share_hi88_\d{8}_\d{6}\.sqlite3", name):
             return await call.answer("Tên bản sao lưu không hợp lệ.", show_alert=True)
         folder = Path(db_path).resolve().parent / "database_backups"
         target = folder / name
