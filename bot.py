@@ -356,7 +356,8 @@ async def choose_site(call: CallbackQuery, state: FSMContext):
     await state.clear()
     await state.update_data(site_id=site[0], site_name=site[1], product_code=site[2], price=site[3])
     await call.message.edit_text(
-        f"🎁 <b>{esc(site[1])}</b>\n"
+        "🎁 <b>ĐẶT ĐƠN KM SHARE</b>\n"
+        f"🎁 <b>{esc(site[1])} • {esc(site[2])} ĐIỂM</b>\n"
         f"🎟 Mã sản phẩm: <code>{esc(site[2])}</code>\n"
         f"💰 Giá mỗi đơn: <b>{money(site[3])}</b>\n\n"
         "Nhấn tiếp tục để nhập thông tin đặt hàng.\n\n"
@@ -398,7 +399,7 @@ async def order_account(message: Message, state: FSMContext):
     await state.set_state(OrderForm.stk_last4)
     data = await state.get_data()
     await message.answer(
-        f"🏦 Nhập <b>4 số cuối STK đã liên kết</b> với tài khoản {esc(data.get('site_name','game'))}:",
+        f"🏦 Nhập <b>6 số cuối STK đã liên kết</b> với tài khoản {esc(data.get('site_name','game'))}:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="↩️ QUAY LẠI BƯỚC 2", callback_data="order_back_account")],
             [InlineKeyboardButton(text="🏠 VỀ MENU CHÍNH", callback_data="home")]
@@ -410,7 +411,7 @@ async def order_account(message: Message, state: FSMContext):
 async def order_stk(message: Message, state: FSMContext):
     digits = re.sub(r"\D", "", message.text or "")
     if len(digits) != 4:
-        return await message.answer("⚠️ Vui lòng nhập đúng 4 chữ số cuối của STK.")
+        return await message.answer("⚠️ Vui lòng nhập đúng 6 chữ số cuối của STK.")
     data = await state.get_data()
     price = int(data["price"])
     await state.update_data(stk_last4=digits)
@@ -420,7 +421,7 @@ async def order_stk(message: Message, state: FSMContext):
         f"🎮 Site: <b>{esc(data['site_name'])}</b>\n"
         f"🎟 Mã sản phẩm: <code>{esc(data['product_code'])}</code>\n"
         f"👤 Tài khoản game: <b>{esc(data['account_name'])}</b>\n"
-        f"🏦 4 số cuối STK: <code>{digits}</code>\n"
+        f"🏦 6 số cuối STK: <code>{digits}</code>\n"
         f"💰 Giá đơn: <b>{money(price)}</b>\n\n"
         "Vui lòng kiểm tra trước khi xác nhận.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -455,7 +456,7 @@ async def order_back_stk(call: CallbackQuery, state: FSMContext):
         return await call.answer("Vui lòng nhập lại thông tin tài khoản.", show_alert=True)
     await state.set_state(OrderForm.stk_last4)
     await call.message.edit_text(
-        f"🏦 Nhập lại <b>4 số cuối STK đã liên kết</b> với tài khoản {esc(data.get('site_name','game'))}:",
+        f"🏦 Nhập lại <b>6 số cuối STK đã liên kết</b> với tài khoản {esc(data.get('site_name','game'))}:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="↩️ QUAY LẠI BƯỚC 2", callback_data="order_back_account")],
             [InlineKeyboardButton(text="🏠 VỀ MENU CHÍNH", callback_data="home")]
@@ -474,7 +475,7 @@ async def order_retry_confirm(call: CallbackQuery, state: FSMContext):
         f"🎮 Site: <b>{esc(data['site_name'])}</b>\n"
         f"🎟 Mã sản phẩm: <code>{esc(data['product_code'])}</code>\n"
         f"👤 Tài khoản game: <b>{esc(data['account_name'])}</b>\n"
-        f"🏦 4 số cuối STK: <code>{data['stk_last4']}</code>\n"
+        f"🏦 6 số cuối STK: <code>{data['stk_last4']}</code>\n"
         f"💰 Giá đơn: <b>{money(data['price'])}</b>\n\n"
         "Thanh toán bằng số dư có trong bot. Nhấn xác nhận để kiểm tra số dư.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -535,7 +536,7 @@ async def order_confirm(call: CallbackQuery, state: FSMContext):
         f"🎮 Site: <b>{esc(data['site_name'])}</b>\n"
         f"🎟 Mã sản phẩm: <code>{esc(data['product_code'])}</code>\n"
         f"👤 Tài khoản: {esc(data['account_name'])}\n"
-        f"🏦 4 số cuối STK: <code>{data['stk_last4']}</code>\n"
+        f"🏦 6 số cuối STK: <code>{data['stk_last4']}</code>\n"
         f"💰 Đã trừ ví: <b>{money(price)}</b>\n"
         f"⏳ Trạng thái: Chờ Admin xử lý",
         reply_markup=main_kb(call.from_user.id)
@@ -548,7 +549,7 @@ async def order_confirm(call: CallbackQuery, state: FSMContext):
                 f"User: <code>{call.from_user.id}</code>\n"
                 f"Site: <b>{esc(data['site_name'])}</b> • Mã {esc(data['product_code'])}\n"
                 f"Tài khoản: {esc(data['account_name'])}\n"
-                f"4 số cuối STK: <code>{data['stk_last4']}</code>\n"
+                f"6 số cuối STK: <code>{data['stk_last4']}</code>\n"
                 f"Giá: {money(price)}",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="🔄 Đang xử lý", callback_data=f"ordproc:{order_id}")],
@@ -905,7 +906,7 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
                 f"👤 Khách: @{esc(username) if username else 'Không có username'} (<code>{uid}</code>)\n"
                 f"🎁 Gói: <b>KM SHARE {esc(product)}</b> • Mã {esc(code)}\n"
                 f"🎮 Tài khoản: <code>{esc(account)}</code>\n"
-                f"🏦 4 số cuối: <code>{esc(last4)}</code>\n"
+                f"🏦 6 số cuối: <code>{esc(last4)}</code>\n"
                 f"💰 Giá trị: <b>{money(price)}</b>\n"
                 f"📌 Trạng thái: <b>{'Đang xử lý' if status == 'processing' else 'Chờ xét duyệt'}</b>\n"
                 f"🕒 Thời gian: {esc(created)}"
@@ -1073,14 +1074,14 @@ async def stk_slot(message: Message, state: FSMContext):
         return await message.answer("Chỉ chọn 1, 2, 3 hoặc 4.")
     await state.update_data(slot=message.text)
     await state.set_state(AdminStkForm.last4)
-    await message.answer("Nhập 4 số cuối STK:")
+    await message.answer("Nhập 6 số cuối STK:")
 
 
 @dp.message(AdminStkForm.last4)
 async def stk_last4(message: Message, state: FSMContext):
     digits = re.sub(r"\D", "", message.text or "")
     if len(digits) != 4:
-        return await message.answer("Cần đúng 4 chữ số.")
+        return await message.answer("Cần đúng 6 chữ số.")
     await state.update_data(last4=digits)
     await state.set_state(AdminStkForm.label)
     await message.answer("Nhập nhãn/mô tả STK (không nhập toàn bộ số tài khoản):")
