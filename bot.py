@@ -200,6 +200,18 @@ def is_admin(user_id):
     return user_id in ADMIN_IDS
 
 
+async def has_admin_permission(user_id, permission):
+    if user_id == MAIN_ADMIN_ID:
+        return True
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT enabled FROM admin_permissions WHERE user_id=? AND permission=?",
+            (user_id, permission)
+        )
+        row = await cur.fetchone()
+    return bool(row and row[0])
+
+
 async def current_price():
     try:
         return int(await setting('product_price_vnd', str(PRODUCT_PRICE)))
@@ -653,6 +665,8 @@ async def myorders(call: CallbackQuery):
 async def admin_order_processing(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return await call.answer("Không có quyền.", show_alert=True)
+    if not await has_admin_permission(call.from_user.id, "orders.review"):
+        return await call.answer("⛔ Bạn chưa được cấp quyền: orders.review", show_alert=True)
     oid = int(call.data.split(":")[1])
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("UPDATE orders SET status='processing',updated_at=? WHERE id=? AND status='pending'", (now_text(), oid))
@@ -718,6 +732,8 @@ async def publish_order_announcement(order_id):
 async def admin_order_done(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return await call.answer("Không có quyền.", show_alert=True)
+    if not await has_admin_permission(call.from_user.id, "orders.review"):
+        return await call.answer("⛔ Bạn chưa được cấp quyền: orders.review", show_alert=True)
     try:
         oid = int(call.data.split(":")[1])
     except (ValueError, IndexError):
@@ -758,6 +774,8 @@ async def admin_order_done(call: CallbackQuery):
 async def admin_order_refund(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return await call.answer("Không có quyền.", show_alert=True)
+    if not await has_admin_permission(call.from_user.id, "orders.review"):
+        return await call.answer("⛔ Bạn chưa được cấp quyền: orders.review", show_alert=True)
     oid = int(call.data.split(":")[1])
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("BEGIN IMMEDIATE")
@@ -781,6 +799,16 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
     if not is_admin(call.from_user.id):
         return await call.answer("Không có quyền.", show_alert=True)
     action = call.data
+    required = {
+        "adm_waiting": "orders.review", "adm_orders": "orders.review",
+        "adm_users": "users.manage", "adm_deposits": "deposits.review",
+        "adm_wallet": "wallet.adjust", "adm_notify": "notifications.send",
+        "adm_report": "reports.read", "adm_stks": "settings.manage",
+        "adm_price": "settings.manage", "adm_sites": "settings.manage",
+        "adm_settings": "settings.manage"
+    }.get(action)
+    if required and not await has_admin_permission(call.from_user.id, required):
+        return await call.answer("⛔ Bạn chưa được cấp quyền: " + required, show_alert=True)
     if action == "adm_waiting":
         async with aiosqlite.connect(DB_PATH) as db:
             cur = await db.execute(
