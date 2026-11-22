@@ -35,7 +35,7 @@ def _kb(rows):
     ])
 
 
-def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, now_text, esc, admin_keyboard):
+def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, now_text, esc, admin_keyboard, sync_command_menus, clear_admin_command_menu):
     async def allowed(call):
         uid = call.from_user.id
         if uid not in admin_ids:
@@ -409,6 +409,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             await db.execute("INSERT INTO admins(user_id,role) VALUES(?, 'sub') ON CONFLICT(user_id) DO UPDATE SET role='sub'", (uid,))
             await db.commit()
         admin_ids.add(uid)
+        await sync_command_menus()
         await audit(message.from_user.id, "add_sub_admin", str(uid))
         await state.clear()
         await message.answer(f"✅ Đã thêm Admin phụ <code>{uid}</code>. Mặc định tất cả quyền đều TẮT.", reply_markup=_kb([[("👑 ADMIN MANAGER", "bs:admins"), ("🔐 PHÂN QUYỀN", "bs:perms")]]))
@@ -441,6 +442,8 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             await db.execute("DELETE FROM admin_permissions WHERE user_id=?", (uid,))
             await db.commit()
         admin_ids.discard(uid)
+        await clear_admin_command_menu(uid)
+        await sync_command_menus()
         await audit(call.from_user.id, "delete_sub_admin", str(uid))
         await call.message.edit_text("✅ Admin phụ đã bị xóa và quyền truy cập đã thu hồi.", reply_markup=_kb([[("👑 ADMIN MANAGER", "bs:admins"), ("↩️ BENI SYSTEM", "bs:home")]]))
         await call.answer()
