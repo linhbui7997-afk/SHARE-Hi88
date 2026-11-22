@@ -22,6 +22,9 @@ class AdminAddForm(StatesGroup):
 class BotSettingForm(StatesGroup):
     value = State()
 
+class BotCommandForm(StatesGroup):
+    value = State()
+
 PERMISSIONS = [("bot.manage", "Quản lý Bot"), ("users.read", "Xem User"), ("users.manage", "Quản lý User"), ("orders.review", "Duyệt đơn"), ("deposits.review", "Duyệt nạp tiền"), ("wallet.adjust", "Điều chỉnh ví"), ("notifications.send", "Gửi thông báo"), ("reports.read", "Xem thống kê"), ("settings.manage", "Cài đặt hệ thống"), ("admins.manage", "Quản lý Admin"), ("database.backup", "Sao lưu Database"), ("maintenance.manage", "Bảo trì")]
 
 
@@ -163,6 +166,113 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         ])
         await audit(call.from_user.id, "view_bot_settings")
 
+    async def command_menu(call: CallbackQuery):
+        commands = await call.bot.get_my_commands()
+        rows = []
+        for item in commands:
+            rows.append([(f"✏️ /{item.command}", f"bs:cmdedit:{item.command}"), (f"🗑 /{item.command}", f"bs:cmddelete:{item.command}")])
+        rows.append([("➕ THÊM LỆNH", "bs:cmdadd")])
+        rows.append([("↩️ BOT SETTINGS", "bs:bot")])
+        body = "\\n".join(f"• /{esc(x.command)} — {esc(x.description)}" for x in commands) or "Chưa có lệnh nào."
+        await show(call, "📋 <b>QUẢN LÝ LỆNH BOT</b>", body + "\\n\\nChọn ✏️ để sửa hoặc 🗑 để xóa từng lệnh.", rows)
+
+    @dp.callback_query(F.data == "bs:cmdadd")
+    async def bs_cmd_add(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        await state.update_data(command_action="add", old_command=None)
+        await state.set_state(BotCommandForm.value)
+        await call.message.edit_text("➕ <b>THÊM LỆNH MỚI</b>\\nGửi theo mẫu: <code>ten_lenh - Mô tả lệnh</code>\\nVí dụ: <code>help - Trợ giúp</code>", reply_markup=_kb([[("❌ HỦY", "bs:cmdcancel")]]))
+        await call.answer()
+
+    @dp.callback_query(F.data.startswith("bs:cmdedit:"))
+    async def bs_cmd_edit(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        name = call.data.split(":", 2)[2]
+        commands = await call.bot.get_my_commands()
+        item = next((x for x in commands if x.command == name), None)
+        if not item: return await call.answer("Không tìm thấy lệnh.", show_alert=True)
+        await state.update_data(command_action="edit", old_command=name)
+        await state.set_state(BotCommandForm.value)
+        await call.message.edit_text(f"✏️ <b>SỬA LỆNH /{esc(name)}</b>\\nGửi tên và mô tả mới theo mẫu:\\n<code>ten_lenh_moi - Mô tả mới</code>\\n\\nHiện tại: {esc(item.description)}", reply_markup=_kb([[("❌ HỦY", "bs:cmdcancel")]]))
+        await call.answer()
+
+    @dp.callback_query(F.data.startswith("bs:cmddelete:"))
+    async def bs_cmd_delete_prompt(call: CallbackQuery):
+        if not await allowed(call): return
+        name = call.data.split(":", 2)[2]
+        await call.message.edit_text(f"⚠️ <b>XÁC NHẬN XÓA LỆNH /{esc(name)}?</b>", reply_markup=_kb([[("✅ XÁC NHẬN XÓA", f"bs:cmddeleteyes:{name}"), ("❌ HỦY", "bs:cmdmenu")]]))
+        await call.answer()
+
+    @dp.callback_query(F.data.startswith("bs:cmddeleteyes:"))
+    async def bs_cmd_delete(call: CallbackQuery):
+        if not await allowed(call): return
+        name = call.data.split(":", 3)[3]
+        commands = await call.bot.get_my_commands()
+        updated = [x for x in commands if x.command != name]
+        if len(updated) == len(commands): return await call.answer("Lệnh không còn tồn tại.", show_alert=True)
+        try:
+            await call.bot.set_my_commands(updated)
+        except Exception as exc:
+            return await call.answer("Không thể xóa: " + str(exc)[:160], show_alert=True)
+        await audit(call.from_user.id, "delete_bot_command", name)
+        await command_menu(call)
+
+    @dp.callback_query(F.data == "bs:cmdmenu")
+    async def bs_cmd_menu(call: CallbackQuery):
+        if not await allowed(call): return
+        await command_menu(call)
+
+    @dp.callback_query(F.data == "bs:cmdcancel")
+    async def bs_cmd_cancel(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        await state.clear()
+        await call.message.edit_text("Đã hủy thao tác.", reply_markup=_kb([[("📋 QUẢN LÝ LỆNH", "bs:cmdmenu"), ("↩️ BOT SETTINGS", "bs:bot")]]))
+        await call.answer()
+
+    @dp.message(BotCommandForm.value)
+    async def bs_cmd_receive(message, state: FSMContext):
+        if message.from_user.id not in admin_ids: return
+        data = await state.get_data()
+        raw = (message.text or "").strip()
+        if " - " not in raw:
+            return await message.answer("Sai định dạng. Gửi: ten_lenh - Mô tả lệnh")
+        name, description = raw.split(" - ", 1)
+        name, description = name.strip(), description.strip()
+        if not name.replace("_", "").isalnum() or name.lower() != name or not 1 <= len(name) <= 32 or not description or len(description) > 256:
+            return await message.answer("Tên lệnh hoặc mô tả không hợp lệ. Tên chỉ gồm chữ thường, số và dấu gạch dưới.")
+        commands = await message.bot.get_my_commands()
+        old = data.get("old_command")
+        if data.get("command_action") == "add" and any(x.command == name for x in commands):
+            return await message.answer("Lệnh này đã tồn tại. Hãy chọn tên khác.")
+        if data.get("command_action") == "edit" and any(x.command == name and x.command != old for x in commands):
+            return await message.answer("Tên lệnh mới đã được sử dụng.")
+        await state.update_data(new_command=name, new_description=description)
+        await message.answer(f"⚠️ <b>XÁC NHẬN {('THÊM' if data.get('command_action') == 'add' else 'SỬA')} LỆNH</b>\\n\\n/{esc(name)} — {esc(description)}", reply_markup=_kb([[("✅ XÁC NHẬN", "bs:cmdconfirm"), ("❌ HỦY", "bs:cmdcancel")]]))
+
+    @dp.callback_query(F.data == "bs:cmdconfirm")
+    async def bs_cmd_confirm(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        data = await state.get_data()
+        action, old = data.get("command_action"), data.get("old_command")
+        name, description = data.get("new_command"), data.get("new_description")
+        if action not in ("add", "edit") or not name or not description:
+            return await call.answer("Không có dữ liệu chờ xác nhận.", show_alert=True)
+        commands = await call.bot.get_my_commands()
+        if action == "edit":
+            commands = [x for x in commands if x.command != old]
+        if any(x.command == name for x in commands):
+            return await call.answer("Tên lệnh đã tồn tại. Hãy hủy và chọn tên khác.", show_alert=True)
+        commands.append(BotCommand(command=name, description=description))
+        if len(commands) > 100:
+            return await call.answer("Telegram chỉ hỗ trợ tối đa 100 lệnh.", show_alert=True)
+        try:
+            await call.bot.set_my_commands(commands)
+        except Exception as exc:
+            return await call.answer("Không thể cập nhật: " + str(exc)[:160], show_alert=True)
+        await audit(call.from_user.id, action + "_bot_command", name, description)
+        await state.clear()
+        await command_menu(call)
+
     @dp.callback_query(F.data.startswith("bs:botedit:"))
     async def bs_bot_edit(call: CallbackQuery, state: FSMContext):
         if not await allowed(call): return
@@ -173,6 +283,9 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             "short": ("ĐỔI MÔ TẢ NGẮN", "Gửi mô tả ngắn (tối đa 120 ký tự)."),
             "commands": ("QUẢN LÝ LỆNH", "Gửi từng dòng theo mẫu: start - Mở menu\\nhelp - Trợ giúp\\nChỉ dùng chữ thường, số và dấu gạch dưới cho tên lệnh.")
         }
+        if field == "commands":
+            await command_menu(call)
+            return
         if field not in prompts: return await call.answer("Mục không hợp lệ.", show_alert=True)
         await state.update_data(bot_field=field)
         await state.set_state(BotSettingForm.value)
