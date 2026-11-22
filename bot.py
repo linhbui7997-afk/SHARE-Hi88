@@ -19,7 +19,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
     BotCommand, BotCommandScopeChat, BotCommandScopeDefault,
     CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup,
-    Message
+    KeyboardButton, ReplyKeyboardMarkup, Message
 )
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -163,22 +163,16 @@ async def set_setting(key, value):
 
 def main_kb(user_id=None):
     rows = [
-        [
-            InlineKeyboardButton(text="🎁 ĐẶT ĐƠN KM SHARE", callback_data="buy"),
-            InlineKeyboardButton(text="💰 NẠP TIỀN", callback_data="deposit"),
-        ],
-        [
-            InlineKeyboardButton(text="👤 TÀI KHOẢN", callback_data="account"),
-            InlineKeyboardButton(text="📜 LỊCH SỬ ĐƠN HÀNG", callback_data="myorders"),
-        ],
-        [
-            InlineKeyboardButton(text="💳 LỊCH SỬ GIAO DỊCH", callback_data="history"),
-            InlineKeyboardButton(text="🎧 LIÊN HỆ HỖ TRỢ", url=os.getenv("SUPPORT_URL", "https://t.me/nilatao")),
-        ],
+        [KeyboardButton(text="🎁 ĐẶT ĐƠN KM SHARE"), KeyboardButton(text="💳 NẠP TIỀN")],
+        [KeyboardButton(text="👛 SỐ DƯ TÀI KHOẢN"), KeyboardButton(text="📊 LỊCH SỬ GIAO DỊCH")],
+        [KeyboardButton(text="📞 LIÊN HỆ ADMIN"), KeyboardButton(text="📖 HƯỚNG DẪN")],
     ]
     if user_id is not None and is_admin(user_id):
-        rows.append([InlineKeyboardButton(text="👑 BẢNG QUẢN LÝ ADMIN", callback_data="admin_home")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+        rows.append([KeyboardButton(text="🛠 QUẢN TRỊ")])
+    return ReplyKeyboardMarkup(
+        keyboard=rows, resize_keyboard=True, is_persistent=True,
+        input_field_placeholder="Chọn chức năng bạn muốn sử dụng"
+    )
 
 
 def back_kb():
@@ -286,7 +280,7 @@ async def home_text(user):
 async def show_home(target, user):
     text = await home_text(user)
     if isinstance(target, CallbackQuery):
-        await target.message.edit_text(text, reply_markup=main_kb(user.id))
+        await target.message.answer(text, reply_markup=main_kb(user.id))
         await target.answer()
     else:
         await target.answer(text, reply_markup=main_kb(user.id))
@@ -364,6 +358,105 @@ async def help_command(message: Message):
         "Chọn chức năng tại các nút bên dưới.",
         reply_markup=main_kb(message.from_user.id)
     )
+
+
+@dp.message(F.text == "🎁 ĐẶT ĐƠN KM SHARE")
+async def reply_buy(message: Message, state: FSMContext):
+    await state.clear()
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT id,name,product_code,price FROM sites WHERE active=1 ORDER BY id")
+        sites = await cur.fetchall()
+    buttons, row = [], []
+    for site in sites:
+        row.append(InlineKeyboardButton(text=f"🎁 SHARE {site[1].title()}", callback_data=f"site:{site[0]}"))
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton(text="↩️ QUAY LẠI MENU", callback_data="home")])
+    await message.answer(
+        "🎁 <b>ĐẶT ĐƠN KM SHARE</b>\n\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "🎉 <b>CHỌN CHƯƠNG TRÌNH KHUYẾN MÃI</b>\n\n"
+        "➜ 🎁 SHARE Hi88 [108 điểm / 50K]\n"
+        "➜ 🎁 SHARE QQ88 [108 điểm / 50K]\n\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "👇 Vui lòng chọn chương trình muốn tham gia bên dưới.\n\n"
+        "📌 <b>HƯỚNG DẪN ĐẶT ĐƠN</b>\n"
+        "🔹 Hi88: Tên tài khoản + 4 số cuối STK đã liên kết.\n"
+        "🔹 QQ88: Tên tài khoản + 6 số cuối STK đã liên kết.\n\n"
+        "💰 Giá mỗi đơn: <b>50.000đ</b>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+
+
+@dp.message(F.text == "💳 NẠP TIỀN")
+async def reply_deposit(message: Message, state: FSMContext):
+    await state.set_state(DepositForm.amount)
+    await message.answer(
+        "💳 <b>NẠP TIỀN VÀO VÍ</b>\n\n"
+        "Vui lòng nhập số tiền muốn nạp.\n"
+        "• Tối thiểu: <b>30.000đ</b>\n"
+        "• Tối đa: <b>100.000.000đ</b>\n\n"
+        "Ví dụ: <code>50000</code>"
+    )
+
+
+@dp.message(F.text == "👛 SỐ DƯ TÀI KHOẢN")
+async def reply_account(message: Message):
+    row = await get_user(message.from_user.id)
+    await message.answer(
+        "👛 <b>SỐ DƯ TÀI KHOẢN</b>\n\n"
+        f"🆔 ID: <code>{message.from_user.id}</code>\n"
+        f"👤 Username: @{esc(message.from_user.username or 'chưa đặt')}\n"
+        f"💰 Số dư ví: <b>{money(row['wallet'] if row else 0)}</b>",
+        reply_markup=main_kb(message.from_user.id)
+    )
+
+
+@dp.message(F.text == "📊 LỊCH SỬ GIAO DỊCH")
+async def reply_history(message: Message):
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT code,amount,status,created_at FROM deposits WHERE user_id=? ORDER BY id DESC LIMIT 10", (message.from_user.id,))
+        deposits = await cur.fetchall()
+        cur = await db.execute("SELECT id,product,product_code,price,status,created_at FROM orders WHERE user_id=? ORDER BY id DESC LIMIT 10", (message.from_user.id,))
+        orders = await cur.fetchall()
+    lines = ["📊 <b>LỊCH SỬ GIAO DỊCH</b>", "", "💳 <b>LỊCH SỬ NẠP TIỀN</b>"]
+    lines += [f"• {esc(d[0])} | {money(d[1])} | {esc(d[2])} | {esc(d[3])}" for d in deposits] or ["• Chưa có lần nạp."]
+    lines += ["", "🎁 <b>LỊCH SỬ ĐƠN HÀNG</b>"]
+    lines += [f"• ORD-{o[0]:06d} | {esc(o[1])} / {esc(o[2])} | {money(o[3])} | {esc(o[4])}" for o in orders] or ["• Chưa có đơn hàng."]
+    await message.answer("\n".join(lines), reply_markup=main_kb(message.from_user.id))
+
+
+@dp.message(F.text == "📞 LIÊN HỆ ADMIN")
+async def reply_support(message: Message):
+    url = os.getenv("SUPPORT_URL", "https://t.me/nilatao")
+    await message.answer("📞 <b>LIÊN HỆ HỖ TRỢ</b>\nNhấn nút bên dưới để liên hệ quản trị viên.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📩 NHẮN ADMIN", url=url)]]))
+
+
+@dp.message(F.text == "📖 HƯỚNG DẪN")
+async def reply_guide(message: Message):
+    await message.answer(
+        "📖 <b>HƯỚNG DẪN MUA HÀNG</b>\n\n"
+        "1️⃣ Chọn 🎁 ĐẶT ĐƠN KM SHARE.\n"
+        "2️⃣ Chọn Hi88 hoặc QQ88.\n"
+        "3️⃣ Nhập tên tài khoản và số cuối STK đã liên kết.\n"
+        "   • Hi88: đúng 4 số.\n"
+        "   • QQ88: đúng 6 số.\n"
+        "4️⃣ Kiểm tra thông tin và xác nhận thanh toán.\n"
+        "5️⃣ Đơn sẽ vào hàng chờ QTV xử lý.\n\n"
+        "💰 Giá mỗi đơn: <b>50.000đ</b>",
+        reply_markup=main_kb(message.from_user.id)
+    )
+
+
+@dp.message(F.text == "🛠 QUẢN TRỊ")
+async def reply_admin(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ Bạn không có quyền truy cập.")
+    await message.answer("🛠 <b>BẢNG QUẢN TRỊ SHARE-Hi88</b>\nChọn chức năng:", reply_markup=admin_kb())
 
 
 @dp.message(Command("admin"))
@@ -746,7 +839,7 @@ async def deposit_amount(message: Message, state: FSMContext):
         f"📝 Nội dung chuyển khoản: <code>{code}</code>\n\n"
         "⚠️ <b>QUAN TRỌNG:</b> Hãy chuyển ĐÚNG số tiền và ĐÚNG mã giao dịch hiển thị ở trên "
         "để hệ thống tự động nhận diện và cộng tiền vào ví sau khi SePay xác nhận giao dịch.",
-        reply_markup=main_kb()
+        reply_markup=main_kb(message.from_user.id)
     )
     await message.answer_photo(qr, caption=f"QR nạp tiền • ID {message.from_user.id}")
 
