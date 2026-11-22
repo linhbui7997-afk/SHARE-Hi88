@@ -746,12 +746,16 @@ async def admin_order_done(call: CallbackQuery):
 
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("BEGIN IMMEDIATE")
-        cur = await db.execute("SELECT user_id,status FROM orders WHERE id=?", (oid,))
+        cur = await db.execute(
+            "SELECT o.user_id,o.status,u.username,o.product,o.product_code,o.account_name "
+            "FROM orders o LEFT JOIN users u ON u.user_id=o.user_id WHERE o.id=?",
+            (oid,)
+        )
         row = await cur.fetchone()
         if not row:
             await db.rollback()
             return await call.answer("Không tìm thấy đơn hàng.", show_alert=True)
-        uid, current_status = row
+        uid, current_status, username, product, product_code, account_name = row
         if current_status == "completed":
             await db.rollback()
             return await call.answer("Đơn này đã hoàn thành trước đó.", show_alert=True)
@@ -762,10 +766,38 @@ async def admin_order_done(call: CallbackQuery):
         await db.execute("INSERT INTO order_announcements(order_id,status,updated_at) VALUES(?,?,?) ON CONFLICT(order_id) DO NOTHING", (oid, "pending", now_text()))
         await db.commit()
 
+    customer_username = f"@{esc(username)}" if username else "Không có username"
+    product_name = f"KM SHARE {product} [{product_code}]"
+    customer_notice = (
+        "🎉 <b>THÔNG BÁO ĐƠN HÀNG ĐÃ XỬ LÝ</b>\\n\\n"
+        "━━━━━━━━━━━━━━━━━━\\n\\n"
+        "✅ <b>ĐƠN HÀNG CỦA BẠN ĐÃ ĐƯỢC ADMIN XỬ LÝ THÀNH CÔNG!</b>\\n\\n"
+        "✎ <b>THÔNG TIN KHÁCH HÀNG:</b>\\n"
+        f"➜ Telegram ID: <code>{uid}</code>\\n"
+        f"➜ Tài khoản đặt: {customer_username}\\n"
+        f"➜ Mã đơn hàng: <code>DH{oid:08d}</code>\\n\\n"
+        "🎁 <b>THÔNG TIN KHUYẾN MÃI:</b>\\n"
+        f"• Gói dịch vụ: <b>{esc(product_name)}</b>\\n"
+        "• Trạng thái: <b>✅ ĐÃ HOÀN TẤT</b>\\n\\n"
+        "━━━━━━━━━━━━━━━━━━\\n\\n"
+        "⤷ <b>LƯU Ý:</b>\\n"
+        "Vui lòng kiểm tra lại tài khoản đã đăng ký khuyến mãi.\\n\\n"
+        "➜ Cảm ơn bạn đã sử dụng dịch vụ tại <b>SHARE-Hi88</b> ♡\\n\\n"
+        "🤖 Hỗ trợ: @sharehi88bot"
+    )
     try:
-        await bot.send_message(uid, f"✅ Đơn DH{oid:08d} đã hoàn thành.")
-    except Exception:
-        log.exception("Could not notify user about completed order %s", oid)
+        await bot.send_message(uid, customer_notice)
+        customer_notice_result = "sent"
+    except Exception as exc:
+        customer_notice_result = f"failed:{type(exc).__name__}"
+        log.exception("Could not notify user %s about completed order %s", uid, oid)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO transactions(user_id,kind,amount,note,created_at,ref) VALUES(?,?,?,?,?,?)",
+            (uid, "order_customer_notice", 0,
+             f"Order completed notice {customer_notice_result}", now_text(), f"DH{oid:08d}")
+        )
+        await db.commit()
 
     publish_result = await publish_order_announcement(oid)
     if publish_result == "sent":
