@@ -410,7 +410,7 @@ async def order_account(message: Message, state: FSMContext):
 @dp.message(OrderForm.stk_last4)
 async def order_stk(message: Message, state: FSMContext):
     digits = re.sub(r"\D", "", message.text or "")
-    if len(digits) != 4:
+    if len(digits) != 6:
         return await message.answer("⚠️ Vui lòng nhập đúng 6 chữ số cuối của STK.")
     data = await state.get_data()
     price = int(data["price"])
