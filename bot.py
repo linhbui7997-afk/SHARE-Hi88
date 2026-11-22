@@ -904,9 +904,54 @@ async def myorders(call: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("ordproc:"))
 async def admin_order_processing(call: CallbackQuery):
-    # Callback cũ được giữ tương thích: ↻ nay là hoàn đơn, hoàn tiền.
-    refund_call = call.model_copy(update={"data": "ordrefund:" + call.data.split(":", 1)[1]})
-    await admin_order_refund(refund_call)
+    if not is_admin(call.from_user.id):
+        return await call.answer("Không có quyền.", show_alert=True)
+    if not await has_admin_permission(call.from_user.id, "orders.review"):
+        return await call.answer("⛔ Bạn chưa được cấp quyền: orders.review", show_alert=True)
+    try:
+        oid = int(call.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        return await call.answer("Mã đơn không hợp lệ.", show_alert=True)
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("BEGIN IMMEDIATE")
+        cur = await db.execute("SELECT user_id,status FROM orders WHERE id=?", (oid,))
+        row = await cur.fetchone()
+        if not row or row[1] not in ("pending", "processing"):
+            await db.rollback()
+            return await call.answer("Đơn không còn ở trạng thái chờ xử lý.", show_alert=True)
+        uid, old_status = row
+        if old_status == "processing":
+            await db.rollback()
+            return await call.answer("Đơn này đang được xử lý.")
+        cur = await db.execute(
+            "UPDATE orders SET status='processing',updated_at=? WHERE id=? AND status='pending'",
+            (now_text(), oid)
+        )
+        if cur.rowcount != 1:
+            await db.rollback()
+            return await call.answer("Trạng thái đơn vừa thay đổi, vui lòng tải lại.", show_alert=True)
+        await db.commit()
+
+    try:
+        await bot.send_message(
+            uid,
+            "🔄 <b>ĐƠN HÀNG ĐANG ĐƯỢC XỬ LÝ</b>\\n\\n"
+            f"Mã đơn: <code>DH{oid:08d}</code>\\n"
+            "Quản trị viên đã tiếp nhận đơn. Vui lòng chờ thông báo hoàn tất."
+        )
+    except Exception:
+        log.exception("Could not notify user %s that order %s is processing", uid, oid)
+    await call.answer("Đã chuyển đơn sang ĐANG XỬ LÝ.")
+    try:
+        await call.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 ĐANG XỬ LÝ", callback_data=f"ordproc:{oid}")],
+            [InlineKeyboardButton(text="✅ DONE DUYỆT KM", callback_data=f"orddone:{oid}")],
+            [InlineKeyboardButton(text="↩️ HOÀN ĐƠN", callback_data=f"ordrefund:{oid}")],
+            [InlineKeyboardButton(text="× LẠM DỤNG", callback_data=f"ordabuse:{oid}")]
+        ]))
+    except Exception:
+        pass
 
 
 async def publish_order_announcement(order_id):
