@@ -36,9 +36,9 @@ PRODUCT_ACTIVE = os.getenv("PRODUCT_ACTIVE", "true").lower() == "true"
 MIN_TOTAL_DEPOSIT = int(os.getenv("MIN_TOTAL_DEPOSIT_VND", "500000"))
 MIN_DEPOSIT_COUNT = int(os.getenv("MIN_DEPOSIT_COUNT", "3"))
 SEPAY_API_KEY = os.getenv("SEPAY_API_KEY", "")
-SEPAY_BANK = "ACB"
-SEPAY_ACCOUNT = "28682791"
-SEPAY_ACCOUNT_NAME = "BUI HOANG YEN LINH"
+SEPAY_BANK = os.getenv("SEPAY_BANK_NAME", "ACB")
+SEPAY_ACCOUNT = os.getenv("SEPAY_ACCOUNT_NUMBER", "28682791")
+SEPAY_ACCOUNT_NAME = os.getenv("SEPAY_ACCOUNT_NAME", "BUI HOANG YEN LINH")
 SEPAY_QR_TEMPLATE = os.getenv("SEPAY_QR_TEMPLATE", "compact2")
 ORDER_ANNOUNCE_CHANNEL = os.getenv("ORDER_ANNOUNCE_CHANNEL", "@sharegame1")
 SEPAY_PREFIX = re.sub(r"[^A-Z0-9]", "", os.getenv("SEPAY_CODE_PREFIX", "SH").upper())[:5] or "SH"
@@ -598,7 +598,7 @@ async def deposit_amount(message: Message, state: FSMContext):
     await state.clear()
     qr = (
         f"https://qr.sepay.vn/img?acc={SEPAY_ACCOUNT}&bank={SEPAY_BANK}"
-        f"&amount={amount}&des={message.from_user.id}&template={SEPAY_QR_TEMPLATE}"
+        f"&amount={amount}&des={code}&template={SEPAY_QR_TEMPLATE}"
     )
     await message.answer(
         "🏦 <b>THÔNG TIN CHUYỂN KHOẢN 🏦</b>\n\n"
@@ -608,8 +608,8 @@ async def deposit_amount(message: Message, state: FSMContext):
         f"🔢 STK: <code>{SEPAY_ACCOUNT}</code>\n"
         f"👤 Tên: <b>{esc(SEPAY_ACCOUNT_NAME)}</b>\n\n"
         f"💵 Số tiền cần nạp: <b>{money(amount)}</b>\n"
-        f"📝 Nội dung: <code>{message.from_user.id}</code>\n\n"
-        "⚠️ <b>QUAN TRỌNG:</b> Hãy chuyển ĐÚNG số tiền và ĐÚNG nội dung là ID Telegram của bạn "
+        f"📝 Nội dung chuyển khoản: <code>{code}</code>\n\n"
+        "⚠️ <b>QUAN TRỌNG:</b> Hãy chuyển ĐÚNG số tiền và ĐÚNG mã giao dịch hiển thị ở trên "
         "để hệ thống tự động nhận diện và cộng tiền vào ví sau khi SePay xác nhận giao dịch.",
         reply_markup=main_kb()
     )
@@ -1289,59 +1289,84 @@ async def notify_send(call: CallbackQuery, state: FSMContext):
 
 
 async def sepay_webhook(request: web.Request):
-    # Fail closed: never accept payment callbacks without a configured shared secret.
+    # API Key authentication: configure the same secret in Railway and SePay.
     if not SEPAY_API_KEY:
         log.error("SEPAY_API_KEY is not configured; webhook disabled")
         return web.json_response({"success": False, "error": "webhook_not_configured"}, status=503)
     auth = request.headers.get("Authorization", "")
-    if auth != f"Apikey {SEPAY_API_KEY}":
+    if not secrets.compare_digest(auth, f"Apikey {SEPAY_API_KEY}"):
         return web.json_response({"success": False}, status=401)
     try:
         payload = await request.json()
-        sepay_id = str(payload["id"])
-        amount = int(payload["transferAmount"])
-        content = str(payload.get("content") or "")
-        transfer_type = payload.get("transferType")
-        if transfer_type != "in" or amount <= 0:
+        sepay_id = str(payload.get("id", "")).strip()
+        amount = int(payload.get("transferAmount") or 0)
+        content = str(payload.get("content") or "").upper()
+        transfer_type = str(payload.get("transferType") or "").lower()
+        receiver_account = re.sub(r"\D", "", str(payload.get("accountNumber") or ""))
+        expected_account = re.sub(r"\D", "", SEPAY_ACCOUNT)
+
+        if not sepay_id or transfer_type != "in" or amount <= 0:
             return web.json_response({"success": True})
-        id_match = re.fullmatch(r"\s*(\d{5,15})\s*", content)
-        transfer_user_id = int(id_match.group(1)) if id_match else None
-        if not transfer_user_id:
+        if receiver_account and expected_account and receiver_account != expected_account:
+            log.warning("Ignoring SePay event for an unexpected receiving account")
             return web.json_response({"success": True})
+
+        # The QR memo, pending deposit and webhook must all use the same unique code.
+        code_match = re.search(rf"(?<![A-Z0-9])({re.escape(SEPAY_PREFIX)}[A-F0-9]{{8}})(?![A-Z0-9])", content)
+        if not code_match:
+            return web.json_response({"success": True})
+        payment_code = code_match.group(1)
+
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("BEGIN IMMEDIATE")
             cur = await db.execute(
-                "SELECT user_id,amount,status,code FROM deposits "
-                "WHERE user_id=? AND amount=? AND status='pending' ORDER BY id DESC LIMIT 1",
-                (transfer_user_id, amount)
+                "SELECT user_id,amount,status FROM deposits WHERE code=? LIMIT 1",
+                (payment_code,)
             )
             dep = await cur.fetchone()
-            if not dep:
+            if not dep or dep[2] != "pending" or int(dep[1]) != amount:
                 await db.rollback()
                 return web.json_response({"success": True})
-            code = dep[3]
+
+            uid = int(dep[0])
             try:
-                await db.execute("INSERT INTO sepay_events(sepay_id,received_at,payload) VALUES(?,?,?)",
-                                 (sepay_id, now_text(), str(payload)))
+                await db.execute(
+                    "INSERT INTO sepay_events(sepay_id,received_at,payload) VALUES(?,?,?)",
+                    (sepay_id, now_text(), str(payload))
+                )
             except aiosqlite.IntegrityError:
                 await db.rollback()
                 return web.json_response({"success": True})
-            uid = dep[0]
-            await db.execute("UPDATE deposits SET status='paid',sepay_id=?,paid_at=? WHERE code=?",
-                             (sepay_id, now_text(), code))
+
+            cur = await db.execute(
+                "UPDATE deposits SET status='paid',sepay_id=?,paid_at=? WHERE code=? AND status='pending'",
+                (sepay_id, now_text(), payment_code)
+            )
+            if cur.rowcount != 1:
+                await db.rollback()
+                return web.json_response({"success": True})
+
             await db.execute("UPDATE users SET wallet=wallet+? WHERE user_id=?", (amount, uid))
-            await db.execute("INSERT INTO transactions(user_id,kind,amount,note,created_at,ref) VALUES(?,?,?,?,?,?)",
-                             (uid, "deposit", amount, "Nạp tiền qua SePay", now_text(), code))
+            await db.execute(
+                "INSERT INTO transactions(user_id,kind,amount,note,created_at,ref) VALUES(?,?,?,?,?,?)",
+                (uid, "deposit", amount, "Nạp tiền tự động qua SePay ACB", now_text(), payment_code)
+            )
             await db.commit()
+
         try:
-            await bot.send_message(uid, f"✅ <b>NẠP TIỀN THÀNH CÔNG</b>\nMã: <code>{esc(code)}</code>\nSố tiền: <b>{money(amount)}</b>\nVí đã được cộng tiền.")
+            await bot.send_message(
+                uid,
+                f"✅ <b>NẠP TIỀN THÀNH CÔNG</b>\n"
+                f"Mã giao dịch: <code>{esc(payment_code)}</code>\n"
+                f"Số tiền: <b>{money(amount)}</b>\n"
+                "Ví đã được cộng tiền tự động."
+            )
         except Exception:
-            log.exception("Could not notify user")
+            log.exception("Could not notify user after successful deposit")
         return web.json_response({"success": True})
     except Exception:
         log.exception("SePay webhook processing failed")
         return web.json_response({"success": False}, status=400)
-
 
 async def health(request):
     return web.json_response({"status": "ok", "service": "KM SHARE HI88"})
