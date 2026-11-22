@@ -668,19 +668,9 @@ async def myorders(call: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("ordproc:"))
 async def admin_order_processing(call: CallbackQuery):
-    if not is_admin(call.from_user.id):
-        return await call.answer("Không có quyền.", show_alert=True)
-    if not await has_admin_permission(call.from_user.id, "orders.review"):
-        return await call.answer("⛔ Bạn chưa được cấp quyền: orders.review", show_alert=True)
-    oid = int(call.data.split(":")[1])
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE orders SET status='processing',updated_at=? WHERE id=? AND status='pending'", (now_text(), oid))
-        await db.commit()
-        cur = await db.execute("SELECT user_id FROM orders WHERE id=?", (oid,))
-        row = await cur.fetchone()
-    if row:
-        await bot.send_message(row[0], f"🔄 Đơn ORD-{oid:06d} đang được xử lý.")
-    await call.answer("Đã cập nhật.")
+    # Callback cũ được giữ tương thích: ↻ nay là hoàn đơn, hoàn tiền.
+    call.data = "ordrefund:" + call.data.split(":", 1)[1]
+    await admin_order_refund(call)
 
 
 async def publish_order_announcement(order_id):
@@ -813,22 +803,69 @@ async def admin_order_refund(call: CallbackQuery):
         return await call.answer("Không có quyền.", show_alert=True)
     if not await has_admin_permission(call.from_user.id, "orders.review"):
         return await call.answer("⛔ Bạn chưa được cấp quyền: orders.review", show_alert=True)
-    oid = int(call.data.split(":")[1])
+    try:
+        oid = int(call.data.split(":")[1])
+    except (ValueError, IndexError):
+        return await call.answer("Mã đơn không hợp lệ.", show_alert=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("BEGIN IMMEDIATE")
         cur = await db.execute("SELECT user_id,price,status FROM orders WHERE id=?", (oid,))
         row = await cur.fetchone()
-        if not row or row[2] in ("refunded", "completed"):
+        if not row or row[2] not in ("pending", "processing"):
             await db.rollback()
-            return await call.answer("Không thể hoàn đơn này.", show_alert=True)
+            return await call.answer("Đơn không còn ở trạng thái chờ; không thể hoàn tiền lần nữa.", show_alert=True)
         uid, price, _ = row
         await db.execute("UPDATE users SET wallet=wallet+? WHERE user_id=?", (price, uid))
         await db.execute("UPDATE orders SET status='refunded',updated_at=? WHERE id=?", (now_text(), oid))
         await db.execute("INSERT INTO transactions(user_id,kind,amount,note,created_at,ref) VALUES(?,?,?,?,?,?)",
-                         (uid, "order_refund", price, "Hoàn tiền đơn hàng", now_text(), f"ORD-{oid:06d}"))
+                         (uid, "order_refund", price, "Admin hoàn đơn và hoàn tiền vào ví", now_text(), f"DH{oid:08d}"))
         await db.commit()
-    await bot.send_message(uid, f"↩️ Đơn ORD-{oid:06d} đã được hoàn {money(price)} vào ví.")
-    await call.answer("Đã hoàn tiền.")
+    try:
+        await bot.send_message(uid,
+            "↩️ <b>ĐƠN HÀNG ĐÃ ĐƯỢC HOÀN TIỀN</b>\\n\\n"
+            f"Mã đơn: <code>DH{oid:08d}</code>\\n"
+            f"Số tiền hoàn: <b>{money(price)}</b>\\n"
+            "💰 Tiền đã được cộng lại vào ví SHARE-Hi88 của bạn."
+        )
+    except Exception:
+        log.exception("Could not notify user %s about refund order %s", uid, oid)
+    await call.answer(f"Đã hoàn {money(price)} vào ví khách.")
+
+
+@dp.callback_query(F.data.startswith("ordabuse:"))
+async def admin_order_abuse(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return await call.answer("Không có quyền.", show_alert=True)
+    if not await has_admin_permission(call.from_user.id, "orders.review"):
+        return await call.answer("⛔ Bạn chưa được cấp quyền: orders.review", show_alert=True)
+    try:
+        oid = int(call.data.split(":")[1])
+    except (ValueError, IndexError):
+        return await call.answer("Mã đơn không hợp lệ.", show_alert=True)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("BEGIN IMMEDIATE")
+        cur = await db.execute("SELECT user_id,status FROM orders WHERE id=?", (oid,))
+        row = await cur.fetchone()
+        if not row or row[1] not in ("pending", "processing"):
+            await db.rollback()
+            return await call.answer("Đơn không còn chờ xét duyệt hoặc đã được xử lý.", show_alert=True)
+        uid, _ = row
+        await db.execute("UPDATE orders SET status='rejected_abuse',updated_at=? WHERE id=?", (now_text(), oid))
+        await db.execute(
+            "INSERT INTO transactions(user_id,kind,amount,note,created_at,ref) VALUES(?,?,?,?,?,?)",
+            (uid, "order_rejected_abuse", 0, "Từ chối đơn do tài khoản lạm dụng; không hoàn tiền", now_text(), f"DH{oid:08d}")
+        )
+        await db.commit()
+    try:
+        await bot.send_message(uid,
+            "❌ <b>ĐƠN HÀNG BỊ TỪ CHỐI</b>\\n\\n"
+            f"Mã đơn: <code>DH{oid:08d}</code>\\n"
+            "Lý do: Tài khoản bị xác định có dấu hiệu lạm dụng khuyến mãi.\\n"
+            "Theo quy định chương trình, đơn này không được hoàn tiền."
+        )
+    except Exception:
+        log.exception("Could not notify user %s about abuse rejection %s", uid, oid)
+    await call.answer("Đã từ chối đơn do lạm dụng. Không hoàn tiền.", show_alert=True)
 
 
 @dp.callback_query(F.data.startswith("adm_"))
@@ -876,9 +913,9 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
             await call.message.answer(
                 detail,
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="↻", callback_data=f"ordproc:{oid}"),
-                     InlineKeyboardButton(text="done", callback_data=f"orddone:{oid}"),
-                     InlineKeyboardButton(text="×", callback_data=f"ordrefund:{oid}")]
+                    [InlineKeyboardButton(text="↻ HOÀN ĐƠN", callback_data=f"ordrefund:{oid}"),
+                     InlineKeyboardButton(text="DONE DUYỆT KM", callback_data=f"orddone:{oid}"),
+                     InlineKeyboardButton(text="× LẠM DỤNG", callback_data=f"ordabuse:{oid}")]
                 ])
             )
         if not rows:
