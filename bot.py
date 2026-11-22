@@ -1225,10 +1225,12 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
         async with aiosqlite.connect(DB_PATH) as db:
             cur = await db.execute("SELECT id,name,product_code,price,description,active FROM sites ORDER BY id")
             rows = await cur.fetchall()
-        buttons = [[InlineKeyboardButton(
-            text=f"{'🟢' if r[5] else '⚫'} {r[1]} • Mã {r[2]} • {money(r[3])}",
-            callback_data=f"site_price:{r[0]}"
-        )] for r in rows]
+        buttons = []
+        for r in rows:
+            buttons.append([
+                InlineKeyboardButton(text=f"✏️ {r[1]} • {money(r[3])}", callback_data=f"site_price:{r[0]}"),
+                InlineKeyboardButton(text="🗑 XÓA", callback_data=f"site_delete:{r[0]}")
+            ])
         buttons.append([InlineKeyboardButton(text="↩️ VỀ QUẢN TRỊ", callback_data="admin_home")])
         await call.message.edit_text(
             "👑 <b>QUẢN TRỊ KM SHARE HI88</b>\\n\\n"
@@ -1255,9 +1257,15 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
         lines += [f"• ID {r[0]} | {esc(r[1])} | Mã {esc(r[2])} | {money(r[3])} | {'Đang bật' if r[4] else 'Đã tắt'} | Mô tả: {esc(r[5] or 'Chưa có')}" for r in rows]
         lines += ["", "Dùng các nút bên dưới để thêm site hoặc bật/tắt site."]
         text = "\n".join(lines)
+        site_buttons = [
+            [InlineKeyboardButton(text=f"✏️ SỬA {r[1]}", callback_data=f"site_price:{r[0]}"),
+             InlineKeyboardButton(text="🗑 XÓA", callback_data=f"site_delete:{r[0]}")]
+            for r in rows
+        ]
         await call.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="➕ THÊM SITE", callback_data="site_add")],
             [InlineKeyboardButton(text="🔄 BẬT / TẮT SITE", callback_data="site_toggle_list")],
+            *site_buttons,
             [InlineKeyboardButton(text="↩️ VỀ QUẢN TRỊ", callback_data="admin_home")]
         ]))
         return await call.answer()
@@ -1438,14 +1446,24 @@ async def site_add_description(message: Message, state: FSMContext):
     if len(description) > 500: return await message.answer("Mô tả tối đa 500 ký tự.")
     try:
         async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute("INSERT INTO sites(name,product_code,price,description,active,created_at) VALUES(?,?,?,?,?,?)",
-                             (data["site_name"], data["product_code"], data["site_price"], description, 1, now_text()))
+            cur = await db.execute(
+                "INSERT INTO sites(name,product_code,price,description,active,created_at) VALUES(?,?,?,?,?,?)",
+                (data["site_name"], data["product_code"], data["site_price"], description, 1, now_text())
+            )
+            site_id = cur.lastrowid
             await db.commit()
     except aiosqlite.IntegrityError:
         await state.clear()
         return await message.answer("Tên site đã tồn tại. Nhập /admin để kiểm tra.")
     await state.clear()
-    await message.answer(f"✅ Đã thêm site {esc(data['site_name'])} • mã {esc(data['product_code'])} • {money(data['site_price'])}. Site đã xuất hiện trong danh sách đặt đơn.")
+    await message.answer(
+        f"✅ Đã thêm site {esc(data['site_name'])} • mã {esc(data['product_code'])} • {money(data['site_price'])}.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✏️ CHỈNH SỬA", callback_data=f"site_price:{site_id}"),
+             InlineKeyboardButton(text="🗑 XÓA", callback_data=f"site_delete:{site_id}")],
+            [InlineKeyboardButton(text="↩️ QUẢN LÝ SITE", callback_data="adm_sites")]
+        ])
+    )
 
 
 @dp.callback_query(F.data.startswith("site_price:"))
@@ -1467,7 +1485,10 @@ async def site_price_start(call: CallbackQuery, state: FSMContext):
         f"📝 Mô tả hiện tại: {esc(row[3] or 'Chưa có')}\\n\\n"
         "BƯỚC 1/3 — Nhập mã sản phẩm mới.\\n"
         "⚠️ Mã mới sẽ thay thế mã cũ.",
-        reply_markup=back_kb()
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🗑 XÓA SITE NÀY", callback_data=f"site_delete:{site_id}")],
+            [InlineKeyboardButton(text="↩️ QUAY LẠI MENU", callback_data="adm_price")]
+        ])
     )
     await call.answer()
 
@@ -1528,6 +1549,78 @@ async def site_price_description(message: Message, state: FSMContext):
         "Nội dung mới đã thay thế nội dung cũ. Các đơn hàng đã tạo trước đó không bị thay đổi.",
         reply_markup=admin_kb()
     )
+
+
+@dp.callback_query(F.data.startswith("site_delete:"))
+async def site_delete_prompt(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return await call.answer("Không có quyền.", show_alert=True)
+    try:
+        site_id = int(call.data.split(":", 1)[1])
+    except ValueError:
+        return await call.answer("Site ID không hợp lệ.", show_alert=True)
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT name FROM sites WHERE id=?", (site_id,))
+        site = await cur.fetchone()
+        if not site:
+            return await call.answer("Site không còn tồn tại.", show_alert=True)
+        cur = await db.execute("SELECT COUNT(*) FROM orders WHERE product=?", (site[0],))
+        order_count = (await cur.fetchone())[0]
+    note = (
+        f"Site {site[0]} đã có {order_count} đơn lịch sử. Xác nhận sẽ TẮT site khỏi danh sách mua hàng, "
+        "giữ nguyên bản ghi để bảo toàn lịch sử đơn."
+        if order_count else
+        f"Site {site[0]} chưa có đơn lịch sử. Xác nhận sẽ xóa site khỏi danh sách quản trị và mua hàng."
+    )
+    await call.message.edit_text(
+        f"⚠️ <b>XÁC NHẬN XÓA SITE {esc(site[0])}?</b>\\n\\n{note}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ XÁC NHẬN XÓA", callback_data=f"site_delete_confirm:{site_id}")],
+            [InlineKeyboardButton(text="❌ HỦY", callback_data="adm_sites")]
+        ])
+    )
+    await call.answer()
+
+
+@dp.callback_query(F.data.startswith("site_delete_confirm:"))
+async def site_delete_confirm(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return await call.answer("Không có quyền.", show_alert=True)
+    try:
+        site_id = int(call.data.split(":", 1)[1])
+    except ValueError:
+        return await call.answer("Site ID không hợp lệ.", show_alert=True)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("BEGIN IMMEDIATE")
+        cur = await db.execute("SELECT name FROM sites WHERE id=?", (site_id,))
+        site = await cur.fetchone()
+        if not site:
+            await db.rollback()
+            return await call.answer("Site không còn tồn tại.", show_alert=True)
+        cur = await db.execute("SELECT COUNT(*) FROM orders WHERE product=?", (site[0],))
+        order_count = (await cur.fetchone())[0]
+        if order_count:
+            await db.execute("UPDATE sites SET active=0 WHERE id=?", (site_id,))
+            action = "admin_site_deactivate"
+            result = "Đã gỡ site khỏi danh sách mua hàng. Dữ liệu và đơn hàng cũ được giữ nguyên."
+        else:
+            await db.execute("DELETE FROM sites WHERE id=?", (site_id,))
+            action = "admin_site_delete"
+            result = "Đã xóa site."
+        await db.execute(
+            "INSERT INTO transactions(user_id,kind,amount,note,created_at,ref) VALUES(?,?,?,?,?,?)",
+            (call.from_user.id, action, 0, f"{action}: {site[0]}", now_text(), str(site_id))
+        )
+        await db.commit()
+    await call.message.edit_text(
+        f"✅ <b>{esc(result)}</b>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🛍️ QUẢN LÝ SẢN PHẨM – GIÁ", callback_data="adm_price")],
+            [InlineKeyboardButton(text="➕ QUẢN LÝ SITE", callback_data="adm_sites")],
+            [InlineKeyboardButton(text="↩️ BẢNG QTV", callback_data="admin_home")]
+        ])
+    )
+    await call.answer("Đã xử lý site.")
 
 
 @dp.callback_query(F.data == "site_toggle_list")
