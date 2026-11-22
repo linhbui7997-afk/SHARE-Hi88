@@ -11,9 +11,15 @@ from pathlib import Path
 import aiosqlite
 from aiogram import F
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
+
+class AdminAddForm(StatesGroup):
+    user_id = State()
+
+PERMISSIONS = [("users.read", "Xem User"), ("users.manage", "Quản lý User"), ("orders.review", "Duyệt đơn"), ("deposits.review", "Duyệt nạp tiền"), ("wallet.adjust", "Điều chỉnh ví"), ("notifications.send", "Gửi thông báo"), ("reports.read", "Xem thống kê"), ("settings.manage", "Cài đặt hệ thống"), ("admins.manage", "Quản lý Admin"), ("database.backup", "Sao lưu Database"), ("maintenance.manage", "Bảo trì")]
 
 
 def _kb(rows):
@@ -51,10 +57,10 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
               PRIMARY KEY(user_id, permission)
             );
             """)
-            await db.execute(
-                "INSERT OR IGNORE INTO admins(user_id,role) VALUES(?, 'main')",
-                (main_admin_id,)
-            )
+            await db.execute("INSERT OR IGNORE INTO admins(user_id,role) VALUES(?, 'main')", (main_admin_id,))
+            cur = await db.execute("SELECT user_id FROM admins WHERE role='sub'")
+            for (row,) in await cur.fetchall():
+                admin_ids.add(int(row))
             await db.commit()
 
     async def show(call, title, body, rows):
@@ -132,27 +138,110 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
     async def bs_admins(call: CallbackQuery):
         if not await allowed(call): return
         async with aiosqlite.connect(db_path) as db:
-            cur = await db.execute("SELECT user_id,role FROM admins ORDER BY role,user_id")
-            rows = await cur.fetchall()
-        body = "👑 Admin chính\n" + f"• <code>{main_admin_id}</code>\n\n👥 Admin phụ (cấu hình qua Railway ADMIN_IDS):\n"
-        subs = [f"• <code>{uid}</code> — {esc(role)}" for uid, role in rows if uid != main_admin_id]
-        body += "\n".join(subs) if subs else "Chưa có Admin phụ được lưu trong database."
-        body += "\n\nQuản lý Admin phụ hiện vẫn cần cập nhật biến ADMIN_IDS trong Railway để quyền có hiệu lực sau khi khởi động."
-        await show(call, "👑 <b>ADMIN MANAGER</b>", body, [[("↩️ QUAY LẠI", "bs:home")]])
-        await audit(call.from_user.id, "view_admins")
+            cur = await db.execute("SELECT user_id FROM admins WHERE role='sub' ORDER BY user_id")
+            ids = [row[0] for row in await cur.fetchall()]
+        rows = [[(f"👤 {uid}", f"bs:admin:{uid}")] for uid in ids]
+        rows += [[("➕ THÊM ADMIN", "bs:adminadd"), ("↩️ QUAY LẠI", "bs:home")]]
+        await show(call, "👑 <b>ADMIN MANAGER</b>", f"Admin chính: <code>{main_admin_id}</code>\nChọn Admin phụ để quản lý.", rows)
+
+    @dp.callback_query(F.data == "bs:adminadd")
+    async def bs_admin_add(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        if call.from_user.id != main_admin_id: return await call.answer("Chỉ Admin chính được thêm Admin.", show_alert=True)
+        await state.set_state(AdminAddForm.user_id)
+        await call.message.edit_text("➕ <b>THÊM ADMIN PHỤ</b>\nGửi Telegram ID dạng số.", reply_markup=_kb([[("❌ HỦY", "bs:admins")]]))
+        await call.answer()
+
+    @dp.message(AdminAddForm.user_id)
+    async def bs_admin_add_receive(message, state: FSMContext):
+        if message.from_user.id != main_admin_id:
+            await state.clear()
+            return
+        raw = (message.text or "").strip()
+        if not raw.isdigit() or not 5 <= len(raw) <= 15:
+            return await message.answer("ID không hợp lệ. Hãy gửi Telegram ID chỉ gồm chữ số.")
+        uid = int(raw)
+        if uid == main_admin_id:
+            await state.clear()
+            return await message.answer("Đây là Admin chính.")
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute("INSERT INTO admins(user_id,role) VALUES(?, 'sub') ON CONFLICT(user_id) DO UPDATE SET role='sub'", (uid,))
+            await db.commit()
+        admin_ids.add(uid)
+        await audit(message.from_user.id, "add_sub_admin", str(uid))
+        await state.clear()
+        await message.answer(f"✅ Đã thêm Admin phụ <code>{uid}</code>. Mặc định tất cả quyền đều TẮT.", reply_markup=_kb([[("👑 ADMIN MANAGER", "bs:admins"), ("🔐 PHÂN QUYỀN", "bs:perms")]]))
+
+    @dp.callback_query(F.data.startswith("bs:admin:"))
+    async def bs_admin_detail(call: CallbackQuery):
+        if not await allowed(call): return
+        uid = int(call.data.split(":")[-1])
+        if uid == main_admin_id: return await call.answer("Không thể sửa Admin chính.", show_alert=True)
+        await call.message.edit_text(f"👤 <b>ADMIN PHỤ</b>\nID: <code>{uid}</code>", reply_markup=_kb([[("🔐 CẤU HÌNH QUYỀN", f"bs:permuser:{uid}")], [("🗑 XÓA ADMIN", f"bs:admindel:{uid}")], [("↩️ DANH SÁCH", "bs:admins")]]))
+        await call.answer()
+
+    @dp.callback_query(F.data.startswith("bs:admindel:"))
+    async def bs_admin_delete_prompt(call: CallbackQuery):
+        if not await allowed(call): return
+        if call.from_user.id != main_admin_id: return await call.answer("Chỉ Admin chính được xóa.", show_alert=True)
+        uid = int(call.data.split(":")[-1])
+        if uid == main_admin_id: return await call.answer("Không thể xóa Admin chính.", show_alert=True)
+        await call.message.edit_text(f"⚠️ <b>XÁC NHẬN XÓA ADMIN?</b>\nID: <code>{uid}</code>", reply_markup=_kb([[("⚠️ XÁC NHẬN XÓA", f"bs:admindelconfirm:{uid}"), ("❌ HỦY", f"bs:admin:{uid}")]]))
+        await call.answer()
+
+    @dp.callback_query(F.data.startswith("bs:admindelconfirm:"))
+    async def bs_admin_delete(call: CallbackQuery):
+        if not await allowed(call): return
+        if call.from_user.id != main_admin_id: return await call.answer("Chỉ Admin chính được xóa.", show_alert=True)
+        uid = int(call.data.split(":")[-1])
+        if uid == main_admin_id: return await call.answer("Không thể xóa Admin chính.", show_alert=True)
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute("DELETE FROM admins WHERE user_id=? AND role='sub'", (uid,))
+            await db.execute("DELETE FROM admin_permissions WHERE user_id=?", (uid,))
+            await db.commit()
+        admin_ids.discard(uid)
+        await audit(call.from_user.id, "delete_sub_admin", str(uid))
+        await call.message.edit_text("✅ Admin phụ đã bị xóa và quyền truy cập đã thu hồi.", reply_markup=_kb([[("👑 ADMIN MANAGER", "bs:admins"), ("↩️ BENI SYSTEM", "bs:home")]]))
+        await call.answer()
 
     @dp.callback_query(F.data == "bs:perms")
     async def bs_perms(call: CallbackQuery):
         if not await allowed(call): return
-        body = (
-            "Admin chính: toàn quyền.\nAdmin phụ hiện được xác thực bằng ADMIN_IDS trong Railway.\n\n"
-            "Nhóm quyền thiết kế: users.read/manage • orders.read/review • deposits.read/review • "
-            "wallet.adjust • products.manage • notifications.send • reports.read • "
-            "settings.manage • admins.manage • database.backup/restore • maintenance.manage.\n\n"
-            "Lưu ý: ma trận quyền chi tiết cho từng Admin phụ chưa được bật; không hiển thị đây là tính năng đã hoạt động."
-        )
-        await show(call, "🔐 <b>PERMISSION MANAGER</b>", body, [[("↩️ QUAY LẠI", "bs:home")]])
-        await audit(call.from_user.id, "view_permissions")
+        async with aiosqlite.connect(db_path) as db:
+            cur = await db.execute("SELECT user_id FROM admins WHERE role='sub' ORDER BY user_id")
+            ids = [row[0] for row in await cur.fetchall()]
+        rows = [[(f"👤 {uid}", f"bs:permuser:{uid}")] for uid in ids]
+        rows.append([("↩️ QUAY LẠI", "bs:home")])
+        await show(call, "🔐 <b>PERMISSION MANAGER</b>", "Chọn Admin phụ để bật/tắt từng quyền. Admin chính luôn toàn quyền.", rows)
+
+    @dp.callback_query(F.data.startswith("bs:permuser:"))
+    async def bs_perm_user(call: CallbackQuery):
+        if not await allowed(call): return
+        uid = int(call.data.split(":")[-1])
+        if uid == main_admin_id: return await call.answer("Admin chính luôn toàn quyền.", show_alert=True)
+        async with aiosqlite.connect(db_path) as db:
+            cur = await db.execute("SELECT permission,enabled FROM admin_permissions WHERE user_id=?", (uid,))
+            current = dict(await cur.fetchall())
+        rows = [[(("🟢 " if current.get(key, 0) else "⚫ ") + label, f"bs:permtoggle:{uid}:{key}")] for key,label in PERMISSIONS]
+        rows.append([("↩️ DANH SÁCH QUYỀN", "bs:perms")])
+        await show(call, f"🔐 <b>PHÂN QUYỀN ADMIN</b>\nID: <code>{uid}</code>", "Chạm vào quyền để bật hoặc tắt.", rows)
+
+    @dp.callback_query(F.data.startswith("bs:permtoggle:"))
+    async def bs_perm_toggle(call: CallbackQuery):
+        if not await allowed(call): return
+        if call.from_user.id != main_admin_id: return await call.answer("Chỉ Admin chính được cấp/thu hồi quyền.", show_alert=True)
+        parts = call.data.split(":")
+        uid, permission = int(parts[2]), parts[3]
+        if permission not in {item[0] for item in PERMISSIONS} or uid == main_admin_id:
+            return await call.answer("Thao tác không hợp lệ.", show_alert=True)
+        async with aiosqlite.connect(db_path) as db:
+            cur = await db.execute("SELECT enabled FROM admin_permissions WHERE user_id=? AND permission=?", (uid, permission))
+            row = await cur.fetchone()
+            enabled = 0 if row and row[0] else 1
+            await db.execute("INSERT INTO admin_permissions(user_id,permission,enabled) VALUES(?,?,?) ON CONFLICT(user_id,permission) DO UPDATE SET enabled=excluded.enabled", (uid, permission, enabled))
+            await db.commit()
+        await audit(call.from_user.id, "toggle_admin_permission", str(uid), permission + "=" + str(enabled))
+        await bs_perm_user(call)
 
     @dp.callback_query(F.data == "bs:ui")
     async def bs_ui(call: CallbackQuery):
