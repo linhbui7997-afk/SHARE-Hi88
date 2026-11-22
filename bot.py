@@ -179,17 +179,17 @@ def back_kb():
 
 def admin_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⏳ ĐANG ĐỢI XỬ LÝ", callback_data="adm_waiting")],
-        [InlineKeyboardButton(text="👥 QUẢN LÝ KHÁCH HÀNG", callback_data="adm_users")],
-        [InlineKeyboardButton(text="📦 QUẢN LÝ ĐƠN HÀNG", callback_data="adm_orders")],
-        [InlineKeyboardButton(text="💳 YÊU CẦU NẠP TIỀN", callback_data="adm_deposits")],
-        [InlineKeyboardButton(text="💰 ĐIỀU CHỈNH SỐ DƯ VÍ", callback_data="adm_wallet")],
-        [InlineKeyboardButton(text="🏦 TÀI KHOẢN NHẬN TIỀN", callback_data="adm_stks")],
-        [InlineKeyboardButton(text="🛍️ QUẢN LÝ SẢN PHẨM – GIÁ", callback_data="adm_price")],
-        [InlineKeyboardButton(text="➕ QUẢN LÝ SITE GAME KHÁC", callback_data="adm_sites")],
-        [InlineKeyboardButton(text="📨 THÔNG BÁO ĐẾN ID RIÊNG", callback_data="adm_notify")],
-        [InlineKeyboardButton(text="📊 BÁO CÁO DOANH THU", callback_data="adm_report")],
-        [InlineKeyboardButton(text="⚙️ CÀI ĐẶT HỆ THỐNG", callback_data="adm_settings")],
+        [InlineKeyboardButton(text="⏳ ĐANG ĐỢI XỬ LÝ", callback_data="adm_waiting"),
+         InlineKeyboardButton(text="👥 QUẢN LÝ KHÁCH HÀNG", callback_data="adm_users")],
+        [InlineKeyboardButton(text="📦 QUẢN LÝ ĐƠN HÀNG", callback_data="adm_orders"),
+         InlineKeyboardButton(text="💳 YÊU CẦU NẠP TIỀN", callback_data="adm_deposits")],
+        [InlineKeyboardButton(text="💰 ĐIỀU CHỈNH SỐ DƯ VÍ", callback_data="adm_wallet"),
+         InlineKeyboardButton(text="🏦 TÀI KHOẢN NHẬN TIỀN", callback_data="adm_stks")],
+        [InlineKeyboardButton(text="🛍️ SẢN PHẨM – GIÁ", callback_data="adm_price"),
+         InlineKeyboardButton(text="➕ QUẢN LÝ SITE", callback_data="adm_sites")],
+        [InlineKeyboardButton(text="📨 THÔNG BÁO ID RIÊNG", callback_data="adm_notify"),
+         InlineKeyboardButton(text="📊 BÁO CÁO", callback_data="adm_report")],
+        [InlineKeyboardButton(text="⚙️ BENI SYSTEM – CÀI ĐẶT HỆ THỐNG", callback_data="adm_settings")],
     ])
 
 
@@ -870,10 +870,8 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
         await call.message.edit_text("📨 <b>THÔNG BÁO ĐẾN ID RIÊNG</b>\n\nNhập Telegram ID người nhận:", reply_markup=back_kb())
         return await call.answer()
     elif action == "adm_settings":
-        text = ("⚙️ <b>CÀI ĐẶT HỆ THỐNG</b>\n"
-                f"Điều kiện tổng nạp: {money(MIN_TOTAL_DEPOSIT)}\n"
-                f"Số lần nạp tối thiểu: {MIN_DEPOSIT_COUNT}\n"
-                f"Bot timezone: Asia/Ho_Chi_Minh")
+        await open_beni_system(call)
+        return
     elif action == "adm_report":
         async with aiosqlite.connect(DB_PATH) as db:
             cur = await db.execute("SELECT COUNT(*),COALESCE(SUM(price),0) FROM orders")
@@ -1234,6 +1232,19 @@ async def start_web_server():
     await site.start()
     log.info("HTTP server listening on %s", PORT)
     return runner
+
+
+from handlers.admin_system import register_system_admin
+
+open_beni_system = register_system_admin(
+    dp,
+    db_path=DB_PATH,
+    main_admin_id=MAIN_ADMIN_ID,
+    admin_ids=ADMIN_IDS,
+    timezone=TZ,
+    now_text=now_text,
+    esc=esc,
+)
 
 
 async def main():
