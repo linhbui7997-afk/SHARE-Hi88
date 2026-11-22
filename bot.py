@@ -1244,6 +1244,7 @@ open_beni_system = register_system_admin(
     timezone=TZ,
     now_text=now_text,
     esc=esc,
+    admin_keyboard=admin_kb,
 )
 
 
