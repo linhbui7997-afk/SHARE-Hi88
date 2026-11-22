@@ -63,7 +63,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             required = "notifications.send"
         elif data.startswith("bs:maintenance") or data.startswith("bs:maint"):
             required = "maintenance.manage"
-        elif data.startswith("bs:bot"):
+        elif data.startswith(("bs:bot", "bs:cmd")):
             required = "bot.manage"
         else:
             required = "settings.manage"
@@ -206,7 +206,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
     @dp.callback_query(F.data.startswith("bs:cmddeleteyes:"))
     async def bs_cmd_delete(call: CallbackQuery):
         if not await allowed(call): return
-        name = call.data.split(":", 3)[3]
+        name = call.data.split(":", 2)[2]
         commands = await call.bot.get_my_commands()
         updated = [x for x in commands if x.command != name]
         if len(updated) == len(commands): return await call.answer("Lệnh không còn tồn tại.", show_alert=True)
