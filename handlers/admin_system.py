@@ -31,10 +31,43 @@ def _kb(rows):
 
 def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, now_text, esc, admin_keyboard):
     async def allowed(call):
-        if call.from_user.id not in admin_ids:
+        uid = call.from_user.id
+        if uid not in admin_ids:
             await call.answer("⛔ Bạn không có quyền truy cập.", show_alert=True)
             return False
-        return True
+        if uid == main_admin_id:
+            return True
+        data = call.data or ""
+        if data in ("bs:home", "bs:back"):
+            async with aiosqlite.connect(db_path) as db:
+                cur = await db.execute("SELECT COUNT(*) FROM admin_permissions WHERE user_id=? AND enabled=1", (uid,))
+                has_any = (await cur.fetchone())[0] > 0
+            if has_any: return True
+            await call.answer("Admin chưa được cấp quyền sử dụng BENI SYSTEM.", show_alert=True)
+            return False
+        if data.startswith(("bs:admins", "bs:admin", "bs:perms", "bs:perm")):
+            required = "admins.manage"
+        elif data.startswith("bs:users"):
+            required = "users.read"
+        elif data.startswith("bs:stats"):
+            required = "reports.read"
+        elif data.startswith(("bs:db", "bs:backup", "bs:backups")):
+            required = "database.backup"
+        elif data.startswith("bs:notify") or data.startswith("bs:auto"):
+            required = "notifications.send"
+        elif data.startswith("bs:maintenance") or data.startswith("bs:maint"):
+            required = "maintenance.manage"
+        elif data.startswith("bs:bot"):
+            required = "bot.manage"
+        else:
+            required = "settings.manage"
+        async with aiosqlite.connect(db_path) as db:
+            cur = await db.execute("SELECT enabled FROM admin_permissions WHERE user_id=? AND permission=?", (uid, required))
+            row = await cur.fetchone()
+        if row and row[0]:
+            return True
+        await call.answer("⛔ Bạn chưa được cấp quyền: " + required, show_alert=True)
+        return False
 
     async def audit(actor, action, target="", details=""):
         async with aiosqlite.connect(db_path) as db:
