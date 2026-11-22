@@ -114,6 +114,9 @@ async def init_db():
         columns = {row[1] for row in await cur.fetchall()}
         if "product_code" not in columns:
             await db.execute("ALTER TABLE orders ADD COLUMN product_code TEXT NOT NULL DEFAULT ''")
+        await db.execute("INSERT OR IGNORE INTO admins(user_id,role) VALUES(?, 'main')", (MAIN_ADMIN_ID,))
+        cur = await db.execute("SELECT user_id FROM admins WHERE role='sub'")
+        ADMIN_IDS.update(int(row[0]) for row in await cur.fetchall())
         cur = await db.execute("SELECT COUNT(*) FROM sites")
         if (await cur.fetchone())[0] == 0:
             await db.executemany(
