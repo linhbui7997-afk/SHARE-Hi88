@@ -190,6 +190,7 @@ def admin_kb():
          InlineKeyboardButton(text="🏦 TÀI KHOẢN NHẬN TIỀN", callback_data="adm_stks")],
         [InlineKeyboardButton(text="🛍️ SẢN PHẨM – GIÁ", callback_data="adm_price"),
          InlineKeyboardButton(text="➕ QUẢN LÝ SITE", callback_data="adm_sites")],
+        [InlineKeyboardButton(text="📢 THÔNG BÁO TOÀN THÀNH VIÊN", callback_data="broadcast_start")],
         [InlineKeyboardButton(text="📨 THÔNG BÁO ID RIÊNG", callback_data="adm_notify"),
          InlineKeyboardButton(text="📊 BÁO CÁO", callback_data="adm_report")],
         [InlineKeyboardButton(text="⚙️ BENI SYSTEM – CÀI ĐẶT HỆ THỐNG", callback_data="adm_settings")],
@@ -290,6 +291,10 @@ class SitePriceForm(StatesGroup):
 
 class NotifyForm(StatesGroup):
     recipient = State()
+    content = State()
+    confirm = State()
+
+class BroadcastForm(StatesGroup):
     content = State()
     confirm = State()
 
@@ -1134,6 +1139,96 @@ async def site_toggle(call: CallbackQuery):
         await db.execute("UPDATE sites SET active=CASE active WHEN 1 THEN 0 ELSE 1 END WHERE id=?", (site_id,))
         await db.commit()
     await site_toggle_list(call)
+
+
+@dp.callback_query(F.data == "broadcast_start")
+async def broadcast_start(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return await call.answer("Không có quyền.", show_alert=True)
+    await state.clear()
+    await state.set_state(BroadcastForm.content)
+    await call.message.edit_text(
+        "📢 <b>THÔNG BÁO TOÀN THÀNH VIÊN</b>\\n\\n"
+        "Gửi nội dung hoặc media (ảnh/video/tệp kèm chú thích). Bot sẽ phát tới tất cả ID đã từng nhấn /start.\\n"
+        "Tin nhắn sẽ được sao chép, không hiển thị người gửi gốc.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="↩️ QUAY LẠI QTV", callback_data="admin_home")]
+        ])
+    )
+    await call.answer()
+
+
+@dp.message(BroadcastForm.content)
+async def broadcast_content(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text and message.text.startswith("/"):
+        return await message.answer("Vui lòng gửi nội dung thông báo, không gửi lệnh.")
+    await state.update_data(source_chat_id=message.chat.id, source_message_id=message.message_id)
+    await state.set_state(BroadcastForm.confirm)
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT COUNT(*) FROM users")
+        total = (await cur.fetchone())[0]
+    try:
+        await message.copy_to(message.chat.id)
+    except Exception:
+        pass
+    await message.answer(
+        "🔎 <b>XÁC NHẬN PHÁT THÔNG BÁO</b>\\n\\n"
+        f"👥 Số thành viên trong danh sách: <b>{total:,}</b>\\n"
+        "📌 Đối tượng: Tất cả thành viên từng nhấn /start\\n\\n"
+        "Bạn có chắc chắn muốn gửi thông báo này?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ XÁC NHẬN GỬI TOÀN BỘ", callback_data="broadcast_confirm")],
+            [InlineKeyboardButton(text="❌ HỦY", callback_data="admin_home")]
+        ])
+    )
+
+
+@dp.callback_query(F.data == "broadcast_confirm")
+async def broadcast_confirm(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return await call.answer("Không có quyền.", show_alert=True)
+    if await state.get_state() != BroadcastForm.confirm.state:
+        return await call.answer("Phiên phát thông báo đã hết hạn.", show_alert=True)
+    data = await state.get_data()
+    await state.clear()
+    await call.answer("Bắt đầu gửi thông báo.")
+    await call.message.edit_text("📢 Đang phát thông báo...\\nVui lòng chờ báo cáo kết quả.")
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT user_id FROM users ORDER BY user_id")
+        user_ids = [int(row[0]) for row in await cur.fetchall()]
+    sent = failed = blocked = 0
+    for uid in user_ids:
+        try:
+            await bot.copy_message(
+                chat_id=uid,
+                from_chat_id=data["source_chat_id"],
+                message_id=data["source_message_id"]
+            )
+            sent += 1
+        except Exception as exc:
+            failed += 1
+            if "blocked" in str(exc).lower() or "deactivated" in str(exc).lower():
+                blocked += 1
+            log.warning("Broadcast failed to %s: %s", uid, type(exc).__name__)
+        await asyncio.sleep(0.05)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO transactions(user_id,kind,amount,note,created_at,ref) VALUES(?,?,?,?,?,?)",
+            (call.from_user.id, "admin_broadcast", 0,
+             f"Broadcast total={len(user_ids)} sent={sent} failed={failed} blocked={blocked}",
+             now_text(), str(call.from_user.id))
+        )
+        await db.commit()
+    await call.message.edit_text(
+        "✅ <b>ĐÃ HOÀN TẤT PHÁT THÔNG BÁO</b>\\n\\n"
+        f"👥 Tổng thành viên: <b>{len(user_ids):,}</b>\\n"
+        f"✅ Gửi thành công: <b>{sent:,}</b>\\n"
+        f"❌ Gửi thất bại: <b>{failed:,}</b>\\n"
+        f"🚫 Có dấu hiệu đã chặn bot/ngừng hoạt động: <b>{blocked:,}</b>",
+        reply_markup=admin_kb()
+    )
 
 
 @dp.message(NotifyForm.recipient)
