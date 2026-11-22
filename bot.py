@@ -110,6 +110,7 @@ async def init_db():
           name TEXT NOT NULL UNIQUE,
           product_code TEXT NOT NULL,
           price INTEGER NOT NULL DEFAULT 50000,
+          description TEXT NOT NULL DEFAULT '',
           active INTEGER NOT NULL DEFAULT 1,
           created_at TEXT NOT NULL
         );
@@ -119,6 +120,10 @@ async def init_db():
         columns = {row[1] for row in await cur.fetchall()}
         if "product_code" not in columns:
             await db.execute("ALTER TABLE orders ADD COLUMN product_code TEXT NOT NULL DEFAULT ''")
+        cur = await db.execute("PRAGMA table_info(sites)")
+        site_columns = {row[1] for row in await cur.fetchall()}
+        if "description" not in site_columns:
+            await db.execute("ALTER TABLE sites ADD COLUMN description TEXT NOT NULL DEFAULT ''")
         await db.execute("INSERT OR IGNORE INTO admins(user_id,role) VALUES(?, 'main')", (MAIN_ADMIN_ID,))
         cur = await db.execute("SELECT user_id FROM admins WHERE role='sub'")
         ADMIN_IDS.update(int(row[0]) for row in await cur.fetchall())
@@ -315,12 +320,14 @@ class AdminSiteForm(StatesGroup):
     name = State()
     code = State()
     price = State()
+    description = State()
 
 
 class SitePriceForm(StatesGroup):
     site_id = State()
     code = State()
     price = State()
+    description = State()
 
 
 class NotifyForm(StatesGroup):
@@ -561,17 +568,18 @@ async def choose_site(call: CallbackQuery, state: FSMContext):
     except (ValueError, IndexError):
         return await call.answer("Site không hợp lệ.", show_alert=True)
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("SELECT id,name,product_code,price FROM sites WHERE id=? AND active=1", (site_id,))
+        cur = await db.execute("SELECT id,name,product_code,price,description FROM sites WHERE id=? AND active=1", (site_id,))
         site = await cur.fetchone()
     if not site:
         return await call.answer("Site hiện không hoạt động.", show_alert=True)
     await state.clear()
-    await state.update_data(site_id=site[0], site_name=site[1], product_code=site[2], price=site[3])
+    await state.update_data(site_id=site[0], site_name=site[1], product_code=site[2], price=site[3], description=site[4])
     await call.message.edit_text(
         "🎁 <b>ĐẶT ĐƠN KM SHARE</b>\n"
         f"🎁 <b>{esc(site[1])} • {esc(site[2])} ĐIỂM</b>\n"
         f"🎟 Mã sản phẩm: <code>{esc(site[2])}</code>\n"
-        f"💰 Giá mỗi đơn: <b>{money(site[3])}</b>\n\n"
+        f"💰 Giá mỗi đơn: <b>{money(site[3])}</b>\n"
+        + (f"📝 Mô tả: {esc(site[4])}\n" if site[4] else "") + "\n"
         "━━━━━━━━━━━━━━━━━━\n"
         "📌 <b>HƯỚNG DẪN</b>\n"
         "Sau khi tiếp tục, vui lòng nhập tên tài khoản game và số cuối STK ngân hàng đã liên kết.\n"
@@ -1174,7 +1182,7 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
             rows = await cur.fetchall()
         buttons = [[InlineKeyboardButton(text=f"{r[1]} • {r[2]} • {money(r[3])}", callback_data=f"site_price:{r[0]}")] for r in rows]
         buttons.append([InlineKeyboardButton(text="↩️ VỀ QUẢN TRỊ", callback_data="admin_home")])
-        await call.message.edit_text("🛍️ <b>QUẢN LÝ SẢN PHẨM – GIÁ</b>\nChọn site để chỉnh mã sản phẩm và giá:", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+        await call.message.edit_text("👑 <b>QUẢN TRỊ KM SHARE HI88</b>\n\n🛍️ <b>QUẢN LÝ SẢN PHẨM – GIÁ</b>\n\nChọn site để chỉnh mã sản phẩm, giá và mô tả:", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
         return await call.answer()
     elif action == "adm_stks":
         text = (
@@ -1361,10 +1369,22 @@ async def site_add_price(message: Message, state: FSMContext):
     if not raw or int(raw) < 1000:
         return await message.answer("Giá phải từ 1.000đ trở lên.")
     data = await state.get_data()
+    await state.update_data(site_price=int(raw))
+    await state.set_state(AdminSiteForm.description)
+    return await message.answer("Nhập mô tả sản phẩm (gửi dấu - nếu không cần):")
+
+
+@dp.message(AdminSiteForm.description)
+async def site_add_description(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id): return
+    data = await state.get_data()
+    description = (message.text or "").strip()
+    if description == "-": description = ""
+    if len(description) > 500: return await message.answer("Mô tả tối đa 500 ký tự.")
     try:
         async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute("INSERT INTO sites(name,product_code,price,active,created_at) VALUES(?,?,?,?,?)",
-                             (data["site_name"], data["product_code"], int(raw), 1, now_text()))
+            await db.execute("INSERT INTO sites(name,product_code,price,description,active,created_at) VALUES(?,?,?,?,?,?)",
+                             (data["site_name"], data["product_code"], data["site_price"], description, 1, now_text()))
             await db.commit()
     except aiosqlite.IntegrityError:
         await state.clear()
@@ -1406,12 +1426,23 @@ async def site_price_value(message: Message, state: FSMContext):
     raw = re.sub(r"\D", "", message.text or "")
     if not raw or int(raw) < 1000:
         return await message.answer("Giá không hợp lệ.")
+    await state.update_data(site_price=int(raw))
+    await state.set_state(SitePriceForm.description)
+    await message.answer("Nhập mô tả mới cho sản phẩm (gửi dấu - để xóa mô tả):")
+
+
+@dp.message(SitePriceForm.description)
+async def site_price_description(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id): return
     data = await state.get_data()
+    description = (message.text or "").strip()
+    if description == "-": description = ""
+    if len(description) > 500: return await message.answer("Mô tả tối đa 500 ký tự.")
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE sites SET product_code=?,price=? WHERE id=?", (data["product_code"], int(raw), data["site_id"]))
+        await db.execute("UPDATE sites SET product_code=?,price=?,description=? WHERE id=?", (data["product_code"], data["site_price"], description, data["site_id"]))
         await db.commit()
     await state.clear()
-    await message.answer(f"✅ Đã cập nhật mã {esc(data['product_code'])} và giá {money(int(raw))}.")
+    await message.answer(f"✅ Đã cập nhật mã sản phẩm, giá {money(data['site_price'])} và mô tả.")
 
 
 @dp.callback_query(F.data == "site_toggle_list")
