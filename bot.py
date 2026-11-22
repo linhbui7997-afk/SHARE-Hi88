@@ -351,12 +351,12 @@ async def start(message: Message, state: FSMContext):
 @dp.message(Command("help"))
 async def help_command(message: Message):
     await message.answer(
-        "📖 <b>HƯỚNG DẪN SỬ DỤNG SHARE-Hi88</b>\\n\\n"
-        "🎁 ĐẶT ĐƠN KM SHARE — Chọn chương trình và gửi thông tin tài khoản.\\n"
-        "💰 NẠP TIỀN — Tạo mã nạp và thanh toán theo QR.\\n"
-        "👤 TÀI KHOẢN — Xem ID và số dư ví.\\n"
-        "📜 LỊCH SỬ ĐƠN HÀNG — Theo dõi trạng thái đơn.\\n"
-        "💳 LỊCH SỬ GIAO DỊCH — Xem lịch sử nạp và biến động ví.\\n\\n"
+        "📖 <b>HƯỚNG DẪN SỬ DỤNG SHARE-Hi88</b>\n\n"
+        "🎁 ĐẶT ĐƠN KM SHARE — Chọn chương trình và gửi thông tin tài khoản.\n"
+        "💰 NẠP TIỀN — Tạo mã nạp và thanh toán theo QR.\n"
+        "👤 TÀI KHOẢN — Xem ID và số dư ví.\n"
+        "📜 LỊCH SỬ ĐƠN HÀNG — Theo dõi trạng thái đơn.\n"
+        "💳 LỊCH SỬ GIAO DỊCH — Xem lịch sử nạp và biến động ví.\n\n"
         "Chọn chức năng tại các nút bên dưới.",
         reply_markup=main_kb(message.from_user.id)
     )
