@@ -433,14 +433,29 @@ async def buy(call: CallbackQuery, state: FSMContext):
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("SELECT id,name,product_code,price FROM sites WHERE active=1 ORDER BY id")
         sites = await cur.fetchall()
-    buttons = [[InlineKeyboardButton(text=f"🎁 {r[1]} • Mã {r[2]} • {money(r[3])}", callback_data=f"site:{r[0]}")] for r in sites]
+    buttons = []
+    row = []
+    for r in sites:
+        label = f"🎁 SHARE {r[1].title()}"
+        row.append(InlineKeyboardButton(text=label, callback_data=f"site:{r[0]}"))
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
     buttons.append([InlineKeyboardButton(text="🏠 VỀ MENU CHÍNH", callback_data="home")])
     await call.message.edit_text(
         "🎁 <b>ĐẶT ĐƠN KM SHARE</b>\n\n"
-        "Chọn chương trình bạn muốn nhận khuyến mãi:\n\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "🎉 <b>CHỌN CHƯƠNG TRÌNH KHUYẾN MÃI</b>\n\n"
         "➜ 🎁 SHARE Hi88 [108 điểm / 50K]\n"
         "➜ 🎁 SHARE QQ88 [108 điểm / 50K]\n\n"
-        "Sau khi chọn, nhập tên tài khoản và số cuối STK ngân hàng đã liên kết.",
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "👇 Vui lòng chọn chương trình muốn tham gia bên dưới.\n\n"
+        "📌 <b>HƯỚNG DẪN ĐẶT ĐƠN</b>\n"
+        "🔹 Hi88: Tên tài khoản + 4 số cuối STK đã liên kết.\n"
+        "🔹 QQ88: Tên tài khoản + 6 số cuối STK đã liên kết.\n\n"
+        "💰 Giá mỗi đơn: <b>50.000đ</b>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await call.answer()
@@ -464,10 +479,12 @@ async def choose_site(call: CallbackQuery, state: FSMContext):
         f"🎁 <b>{esc(site[1])} • {esc(site[2])} ĐIỂM</b>\n"
         f"🎟 Mã sản phẩm: <code>{esc(site[2])}</code>\n"
         f"💰 Giá mỗi đơn: <b>{money(site[3])}</b>\n\n"
-        "Nhấn tiếp tục để nhập thông tin đặt hàng.\n\n"
-        "<i>Lưu ý: Điều kiện nạp/cược để nhận khuyến mãi là quy định của trang game, "
-        "không phải điều kiện mua code. Hội viên vui lòng đáp ứng điều kiện của trang game "
-        "để được xét nhận khuyến mãi chia sẻ.</i>",
+        "━━━━━━━━━━━━━━━━━━\n"
+        "📌 <b>HƯỚNG DẪN</b>\n"
+        "Sau khi tiếp tục, vui lòng nhập tên tài khoản game và số cuối STK ngân hàng đã liên kết.\n"
+        f"🔹 {esc(site[1])}: cần đúng {required_stk_digits(site[1])} số cuối STK.\n\n"
+        "⚠️ Kiểm tra kỹ thông tin trước khi xác nhận thanh toán.\n"
+        "━━━━━━━━━━━━━━━━━━",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🛒 TIẾP TỤC", callback_data="order_begin")],
             [InlineKeyboardButton(text="↩️ QUAY LẠI BƯỚC 1", callback_data="buy")],
@@ -485,7 +502,9 @@ async def order_begin(call: CallbackQuery, state: FSMContext):
     await state.set_state(OrderForm.account_name)
     await call.message.edit_text(
         f"📝 <b>THÔNG TIN ĐẶT HÀNG • {esc(data['site_name'])}</b>\n\n"
-        f"👤 Vui lòng nhập tên tài khoản {esc(data['site_name'])}:",
+        f"👤 Vui lòng nhập tên tài khoản {esc(data['site_name'])}:\n\n"
+        "📌 Ví dụ: <code>nguyenvana</code>\n"
+        "━━━━━━━━━━━━━━━━━━",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="↩️ QUAY LẠI BƯỚC 1", callback_data="buy")],
             [InlineKeyboardButton(text="🏠 VỀ MENU CHÍNH", callback_data="home")]
@@ -515,21 +534,26 @@ async def order_account(message: Message, state: FSMContext):
 @dp.message(OrderForm.stk_last4)
 async def order_stk(message: Message, state: FSMContext):
     digits = re.sub(r"\D", "", message.text or "")
+    data = await state.get_data()
     expected_digits = required_stk_digits(data.get("site_name", ""))
     if len(digits) != expected_digits:
-        return await message.answer(f"⚠️ {data.get('site_name', 'Site')} yêu cầu đúng {expected_digits} chữ số cuối STK đã liên kết.")
-    data = await state.get_data()
+        return await message.answer(
+            f"⚠️ {data.get('site_name', 'Site')} yêu cầu đúng {expected_digits} chữ số cuối STK đã liên kết. "
+            "Vui lòng nhập lại."
+        )
     price = int(data["price"])
     await state.update_data(stk_last4=digits)
     await state.set_state(OrderForm.confirm)
     await message.answer(
-        "🔎 <b>XÁC NHẬN THÔNG TIN ĐƠN</b>\n\n"
-        f"🎮 Site: <b>{esc(data['site_name'])}</b>\n"
-        f"🎟 Mã sản phẩm: <code>{esc(data['product_code'])}</code>\n"
-        f"👤 Tài khoản game: <b>{esc(data['account_name'])}</b>\n"
+        "📋 <b>XÁC NHẬN THÔNG TIN ĐƠN HÀNG</b>\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"🎁 Sản phẩm: <b>SHARE {esc(data['site_name'].title())}</b>\n"
+        f"🎟 Gói khuyến mãi: <b>{esc(data['product_code'])} điểm</b>\n"
+        f"👤 Tài khoản: <code>{esc(data['account_name'])}</code>\n"
         f"🏦 {expected_digits} số cuối STK: <code>{digits}</code>\n"
-        f"💰 Giá đơn: <b>{money(price)}</b>\n\n"
-        "Vui lòng kiểm tra trước khi xác nhận.",
+        f"💰 Giá đơn hàng: <b>{money(price)}</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "Vui lòng kiểm tra chính xác thông tin trước khi thanh toán.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ XÁC NHẬN THANH TOÁN", callback_data="order_confirm")],
             [InlineKeyboardButton(text="↩️ QUAY LẠI BƯỚC 2", callback_data="order_back_stk")],
@@ -637,14 +661,18 @@ async def order_confirm(call: CallbackQuery, state: FSMContext):
         await db.commit()
     await state.clear()
     await call.message.edit_text(
-        f"✅ <b>ĐÃ GHI NHẬN ĐƠN HÀNG</b>\n\n"
+        f"🎉 <b>ĐẶT ĐƠN THÀNH CÔNG</b>\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "✅ Thanh toán đơn hàng thành công!\n\n"
+        f"🎁 Sản phẩm: <b>SHARE {esc(data['site_name'].title())}</b>\n"
+        f"🎟 Gói khuyến mãi: <b>{esc(data['product_code'])} điểm</b>\n"
         f"🧾 Mã đơn: <code>ORD-{order_id:06d}</code>\n"
-        f"🎮 Site: <b>{esc(data['site_name'])}</b>\n"
-        f"🎟 Mã sản phẩm: <code>{esc(data['product_code'])}</code>\n"
-        f"👤 Tài khoản: {esc(data['account_name'])}\n"
+        f"👤 Tài khoản: <code>{esc(data['account_name'])}</code>\n"
         f"🏦 {required_stk_digits(data.get('site_name', ''))} số cuối STK: <code>{data['stk_last4']}</code>\n"
-        f"💰 Đã trừ ví: <b>{money(price)}</b>\n"
-        f"⏳ Trạng thái: Chờ Admin xử lý",
+        f"💰 Đã thanh toán: <b>{money(price)}</b>\n"
+        "⏳ Trạng thái: <b>ĐANG CHỜ XỬ LÝ</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "📢 Đơn hàng đã được gửi đến quản trị viên. Vui lòng chờ thông báo khi đơn được xử lý hoàn tất.",
         reply_markup=main_kb(call.from_user.id)
     )
     for admin_id in ADMIN_IDS:
