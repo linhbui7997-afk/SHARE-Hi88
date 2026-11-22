@@ -160,7 +160,8 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             "Username và ảnh đại diện phải đổi qua @BotFather. Không gửi Token vào chat."
         )
         await show(call, "🤖 <b>BOT SETTINGS</b>", body, [
-            [("✏️ ĐỔI TÊN BOT", "bs:botedit:name"), ("📝 SỬA MÔ TẢ", "bs:botedit:description")],
+            [("✏️ ĐỔI TÊN BOT", "bs:botedit:name"), ("🗑 XÓA TÊN BOT", "bs:botclear:name")],
+            [("📝 SỬA MÔ TẢ", "bs:botedit:description"), ("🗑 XÓA MÔ TẢ", "bs:botclear:description")],
             [("🗑 XÓA MÔ TẢ", "bs:botclear:description"), ("📌 SỬA MÔ TẢ NGẮN", "bs:botedit:short")],
             [("🗑 XÓA MÔ TẢ NGẮN", "bs:botclear:short"), ("📋 QUẢN LÝ LỆNH", "bs:botedit:commands")],
             [("🔄 KIỂM TRA TRẠNG THÁI", "bs:bot")],
@@ -279,10 +280,10 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
     async def bs_bot_clear(call: CallbackQuery):
         if not await allowed(call): return
         field = call.data.rsplit(":", 1)[-1]
-        if field not in ("description", "short"):
+        if field not in ("name", "description", "short"):
             return await call.answer("Không thể xóa trường này.", show_alert=True)
         await call.message.edit_text(
-            f"⚠️ <b>XÁC NHẬN XÓA {'MÔ TẢ BOT' if field == 'description' else 'MÔ TẢ NGẮN'}?</b>\\n\\n"
+            f"⚠️ <b>XÁC NHẬN XÓA {'TÊN BOT' if field == 'name' else ('MÔ TẢ BOT' if field == 'description' else 'MÔ TẢ NGẮN')}?</b>\\n\\n"
             "Nội dung hiện tại sẽ được làm trống.",
             reply_markup=_kb([
                 [("✅ XÁC NHẬN XÓA", f"bs:botclearconfirm:{field}")],
@@ -296,7 +297,9 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not await allowed(call): return
         field = call.data.rsplit(":", 1)[-1]
         try:
-            if field == "description":
+            if field == "name":
+                await call.bot.set_my_name("")
+            elif field == "description":
                 await call.bot.set_my_description("")
             elif field == "short":
                 await call.bot.set_my_short_description("")
