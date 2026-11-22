@@ -669,8 +669,8 @@ async def myorders(call: CallbackQuery):
 @dp.callback_query(F.data.startswith("ordproc:"))
 async def admin_order_processing(call: CallbackQuery):
     # Callback cũ được giữ tương thích: ↻ nay là hoàn đơn, hoàn tiền.
-    call.data = "ordrefund:" + call.data.split(":", 1)[1]
-    await admin_order_refund(call)
+    refund_call = call.model_copy(update={"data": "ordrefund:" + call.data.split(":", 1)[1]})
+    await admin_order_refund(refund_call)
 
 
 async def publish_order_announcement(order_id):
