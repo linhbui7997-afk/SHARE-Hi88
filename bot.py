@@ -1194,10 +1194,10 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
         )
     elif action == "adm_sites":
         async with aiosqlite.connect(DB_PATH) as db:
-            cur = await db.execute("SELECT id,name,product_code,price,active FROM sites ORDER BY id")
+            cur = await db.execute("SELECT id,name,product_code,price,active,description FROM sites ORDER BY id")
             rows = await cur.fetchall()
         lines = ["➕ <b>QUẢN LÝ SITE GAME KHÁC</b>"]
-        lines += [f"• ID {r[0]} | {esc(r[1])} | Mã {esc(r[2])} | {money(r[3])} | {'Đang bật' if r[4] else 'Đã tắt'}" for r in rows]
+        lines += [f"• ID {r[0]} | {esc(r[1])} | Mã {esc(r[2])} | {money(r[3])} | {'Đang bật' if r[4] else 'Đã tắt'} | Mô tả: {esc(r[5] or 'Chưa có')}" for r in rows]
         lines += ["", "Dùng các nút bên dưới để thêm site hoặc bật/tắt site."]
         text = "\n".join(lines)
         await call.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -1390,7 +1390,7 @@ async def site_add_description(message: Message, state: FSMContext):
         await state.clear()
         return await message.answer("Tên site đã tồn tại. Nhập /admin để kiểm tra.")
     await state.clear()
-    await message.answer(f"✅ Đã thêm site {esc(data['site_name'])} • mã {esc(data['product_code'])} • {money(int(raw))}. Site đã xuất hiện trong danh sách đặt đơn.")
+    await message.answer(f"✅ Đã thêm site {esc(data['site_name'])} • mã {esc(data['product_code'])} • {money(data['site_price'])}. Site đã xuất hiện trong danh sách đặt đơn.")
 
 
 @dp.callback_query(F.data.startswith("site_price:"))
@@ -1399,13 +1399,13 @@ async def site_price_start(call: CallbackQuery, state: FSMContext):
         return await call.answer("Không có quyền.", show_alert=True)
     site_id = int(call.data.split(":")[1])
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("SELECT name,product_code,price FROM sites WHERE id=?", (site_id,))
+        cur = await db.execute("SELECT name,product_code,price,description FROM sites WHERE id=?", (site_id,))
         row = await cur.fetchone()
     if not row:
         return await call.answer("Không tìm thấy site.", show_alert=True)
     await state.set_state(SitePriceForm.code)
     await state.update_data(site_id=site_id)
-    await call.message.edit_text(f"🛍️ <b>{esc(row[0])}</b>\nMã hiện tại: {esc(row[1])}\nGiá hiện tại: {money(row[2])}\n\nNhập mã sản phẩm mới:", reply_markup=back_kb())
+    await call.message.edit_text(f"🛍️ <b>{esc(row[0])}</b>\nMã hiện tại: {esc(row[1])}\nGiá hiện tại: {money(row[2])}\nMô tả hiện tại: {esc(row[3] or 'Chưa có')}\n\nNhập mã sản phẩm mới:", reply_markup=back_kb())
     await call.answer()
 
 
