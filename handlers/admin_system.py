@@ -4,6 +4,7 @@ This module adds a safe, persistent inline administration dashboard without
 changing customer checkout, wallet, SePay or order processing flows.
 """
 import os
+import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -159,8 +160,9 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             "Username và ảnh đại diện phải đổi qua @BotFather. Không gửi Token vào chat."
         )
         await show(call, "🤖 <b>BOT SETTINGS</b>", body, [
-            [("✏️ ĐỔI TÊN BOT", "bs:botedit:name"), ("📝 MÔ TẢ BOT", "bs:botedit:description")],
-            [("📌 MÔ TẢ NGẮN", "bs:botedit:short"), ("📋 QUẢN LÝ LỆNH", "bs:botedit:commands")],
+            [("✏️ ĐỔI TÊN BOT", "bs:botedit:name"), ("📝 SỬA MÔ TẢ", "bs:botedit:description")],
+            [("🗑 XÓA MÔ TẢ", "bs:botclear:description"), ("📌 SỬA MÔ TẢ NGẮN", "bs:botedit:short")],
+            [("🗑 XÓA MÔ TẢ NGẮN", "bs:botclear:short"), ("📋 QUẢN LÝ LỆNH", "bs:botedit:commands")],
             [("🔄 KIỂM TRA TRẠNG THÁI", "bs:bot")],
             [("↩️ QUAY LẠI", "bs:home")]
         ])
@@ -272,6 +274,42 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await audit(call.from_user.id, action + "_bot_command", name, description)
         await state.clear()
         await command_menu(call)
+
+    @dp.callback_query(F.data.startswith("bs:botclear:"))
+    async def bs_bot_clear(call: CallbackQuery):
+        if not await allowed(call): return
+        field = call.data.rsplit(":", 1)[-1]
+        if field not in ("description", "short"):
+            return await call.answer("Không thể xóa trường này.", show_alert=True)
+        await call.message.edit_text(
+            f"⚠️ <b>XÁC NHẬN XÓA {'MÔ TẢ BOT' if field == 'description' else 'MÔ TẢ NGẮN'}?</b>\\n\\n"
+            "Nội dung hiện tại sẽ được làm trống.",
+            reply_markup=_kb([
+                [("✅ XÁC NHẬN XÓA", f"bs:botclearconfirm:{field}")],
+                [("❌ HỦY", "bs:bot")]
+            ])
+        )
+        await call.answer()
+
+    @dp.callback_query(F.data.startswith("bs:botclearconfirm:"))
+    async def bs_bot_clear_confirm(call: CallbackQuery):
+        if not await allowed(call): return
+        field = call.data.rsplit(":", 1)[-1]
+        try:
+            if field == "description":
+                await call.bot.set_my_description("")
+            elif field == "short":
+                await call.bot.set_my_short_description("")
+            else:
+                return await call.answer("Trường không hợp lệ.", show_alert=True)
+        except Exception as exc:
+            return await call.answer("Telegram không cho phép xóa: " + str(exc)[:160], show_alert=True)
+        await audit(call.from_user.id, "clear_bot_" + field)
+        await call.message.edit_text(
+            "✅ Đã xóa nội dung đã chọn.",
+            reply_markup=_kb([[("🤖 BOT SETTINGS", "bs:bot"), ("↩️ BENI SYSTEM", "bs:home")]])
+        )
+        await call.answer("Đã xóa.")
 
     @dp.callback_query(F.data.startswith("bs:botedit:"))
     async def bs_bot_edit(call: CallbackQuery, state: FSMContext):
@@ -608,7 +646,46 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         folder = Path(db_path).resolve().parent / "database_backups"
         files = sorted(folder.glob("*.sqlite3"), reverse=True)[:10] if folder.exists() else []
         body = "\n".join(f"• <code>{esc(p.name)}</code> • {p.stat().st_size:,} bytes" for p in files) or "Chưa có bản backup."
-        await show(call, "📜 <b>LỊCH SỬ SAO LƯU</b>", body, [[("↩️ DATABASE", "bs:db")]])
+        rows = [[("🗑 XÓA " + p.name[-19:], "bs:backupdel:" + p.name)] for p in files]
+        rows.append([("↩️ DATABASE", "bs:db")])
+        await show(call, "📜 <b>LỊCH SỬ SAO LƯU</b>", body + "\n\nChọn bản sao lưu muốn xóa:", rows)
+
+    @dp.callback_query(F.data.startswith("bs:backupdel:"))
+    async def bs_backup_delete_prompt(call: CallbackQuery):
+        if not await allowed(call): return
+        name = call.data.split(":", 2)[2]
+        if not re.fullmatch(r"share_hi88_\\d{8}_\\d{6}\\.sqlite3", name):
+            return await call.answer("Tên bản sao lưu không hợp lệ.", show_alert=True)
+        await call.message.edit_text(
+            f"⚠️ <b>XÁC NHẬN XÓA BẢN SAO LƯU?</b>\\n\\n<code>{esc(name)}</code>\\n"
+            "Thao tác này chỉ xóa file backup đã chọn, không ảnh hưởng database đang chạy.",
+            reply_markup=_kb([
+                [("✅ XÁC NHẬN XÓA", "bs:backupdelconfirm:" + name)],
+                [("❌ HỦY", "bs:backups")]
+            ])
+        )
+        await call.answer()
+
+    @dp.callback_query(F.data.startswith("bs:backupdelconfirm:"))
+    async def bs_backup_delete(call: CallbackQuery):
+        if not await allowed(call): return
+        name = call.data.split(":", 2)[2]
+        if not re.fullmatch(r"share_hi88_\\d{8}_\\d{6}\\.sqlite3", name):
+            return await call.answer("Tên bản sao lưu không hợp lệ.", show_alert=True)
+        folder = Path(db_path).resolve().parent / "database_backups"
+        target = folder / name
+        if target.parent != folder.resolve() or not target.is_file():
+            return await call.answer("Không tìm thấy bản sao lưu.", show_alert=True)
+        try:
+            target.unlink()
+        except OSError as exc:
+            return await call.answer("Không thể xóa file: " + str(exc)[:120], show_alert=True)
+        await audit(call.from_user.id, "delete_database_backup", name)
+        await call.message.edit_text(
+            f"🗑 Đã xóa bản sao lưu <code>{esc(name)}</code>.",
+            reply_markup=_kb([[("📜 DANH SÁCH BACKUP", "bs:backups"), ("↩️ DATABASE", "bs:db")]])
+        )
+        await call.answer("Đã xóa backup.")
 
     @dp.callback_query(F.data == "bs:stats")
     async def bs_stats(call: CallbackQuery):
