@@ -17,6 +17,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
+    BotCommand, BotCommandScopeChat, BotCommandScopeDefault,
     CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup,
     Message
 )
@@ -201,6 +202,41 @@ def is_admin(user_id):
     return user_id in ADMIN_IDS
 
 
+PUBLIC_BOT_COMMANDS = [
+    BotCommand(command="start", description="🚀 Bắt đầu sử dụng BOT"),
+    BotCommand(command="help", description="📖 Hướng dẫn sử dụng BOT"),
+]
+ADMIN_BOT_COMMANDS = [
+    BotCommand(command="admin", description="🛠 Bảng điều khiển QTV"),
+    BotCommand(command="qtv", description="⏳ Đơn hàng chờ xử lý"),
+    BotCommand(command="xuly", description="📦 Quản lý đơn hàng"),
+    BotCommand(command="list", description="👥 Quản lý khách hàng"),
+    BotCommand(command="sodu", description="💰 Quản lý số dư"),
+    BotCommand(command="tb", description="📢 Gửi thông báo"),
+    BotCommand(command="tke", description="📊 Thống kê hệ thống"),
+    BotCommand(command="caidat", description="⚙️ Cài đặt hệ thống"),
+]
+
+
+async def sync_command_menus():
+    try:
+        await bot.set_my_commands(PUBLIC_BOT_COMMANDS, scope=BotCommandScopeDefault())
+    except Exception:
+        log.exception("Could not set the public Telegram command menu")
+    for admin_id in sorted(ADMIN_IDS):
+        try:
+            await bot.set_my_commands(ADMIN_BOT_COMMANDS, scope=BotCommandScopeChat(chat_id=admin_id))
+        except Exception:
+            log.exception("Could not set the admin command menu for %s", admin_id)
+
+
+async def clear_admin_command_menu(user_id: int):
+    try:
+        await bot.delete_my_commands(scope=BotCommandScopeChat(chat_id=user_id))
+    except Exception:
+        log.exception("Could not clear the admin command menu for %s", user_id)
+
+
 async def has_admin_permission(user_id, permission):
     if user_id == MAIN_ADMIN_ID:
         return True
@@ -317,6 +353,54 @@ async def admin(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ Bạn không có quyền truy cập.")
     await message.answer("👑 <b>QUẢN TRỊ KM SHARE HI88</b>\nChọn chức năng:", reply_markup=admin_kb())
+
+
+async def admin_command_shortcut(message: Message, title: str, callback_data: str, permission: str):
+    user_id = message.from_user.id
+    if not is_admin(user_id):
+        return await message.answer("⛔ Bạn không có quyền truy cập.")
+    if not await has_admin_permission(user_id, permission):
+        return await message.answer("⛔ Bạn chưa được cấp quyền: " + permission)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=title, callback_data=callback_data)],
+        [InlineKeyboardButton(text="↩️ MỞ BẢNG QTV", callback_data="admin_home")]
+    ])
+    await message.answer(title, reply_markup=keyboard)
+
+
+@dp.message(Command("qtv"))
+async def command_qtv(message: Message):
+    await admin_command_shortcut(message, "⏳ ĐƠN HÀNG CHỜ XỬ LÝ", "adm_waiting", "orders.review")
+
+
+@dp.message(Command("xuly"))
+async def command_xuly(message: Message):
+    await admin_command_shortcut(message, "📦 QUẢN LÝ ĐƠN HÀNG", "adm_orders", "orders.review")
+
+
+@dp.message(Command("list"))
+async def command_list(message: Message):
+    await admin_command_shortcut(message, "👥 QUẢN LÝ KHÁCH HÀNG", "adm_users", "users.manage")
+
+
+@dp.message(Command("sodu"))
+async def command_sodu(message: Message):
+    await admin_command_shortcut(message, "💰 QUẢN LÝ SỐ DƯ", "adm_wallet", "wallet.adjust")
+
+
+@dp.message(Command("tb"))
+async def command_tb(message: Message):
+    await admin_command_shortcut(message, "📢 GỬI THÔNG BÁO", "broadcast_start", "notifications.send")
+
+
+@dp.message(Command("tke"))
+async def command_tke(message: Message):
+    await admin_command_shortcut(message, "📊 THỐNG KÊ HỆ THỐNG", "adm_report", "reports.read")
+
+
+@dp.message(Command("caidat"))
+async def command_caidat(message: Message):
+    await admin_command_shortcut(message, "⚙️ CÀI ĐẶT HỆ THỐNG", "adm_settings", "settings.manage")
 
 
 @dp.callback_query(F.data == "home")
@@ -1466,11 +1550,14 @@ open_beni_system = register_system_admin(
     now_text=now_text,
     esc=esc,
     admin_keyboard=admin_kb,
+    sync_command_menus=sync_command_menus,
+    clear_admin_command_menu=clear_admin_command_menu,
 )
 
 
 async def main():
     await init_db()
+    await sync_command_menus()
     runner = await start_web_server()
     try:
         await dp.start_polling(bot)
