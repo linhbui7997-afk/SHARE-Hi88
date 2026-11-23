@@ -531,9 +531,9 @@ async def reply_guide(message: Message):
 
 @dp.message(lambda message: message.text == menu_label("admin"))
 async def reply_admin(message: Message):
-    await send_menu_extras(message, "admin")
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ Bạn không có quyền truy cập.")
+    await send_menu_extras(message, "admin")
     await message.answer("🛠 <b>BẢNG QUẢN TRỊ SHARE-Hi88</b>\nChọn chức năng:", reply_markup=admin_kb())
 
 
