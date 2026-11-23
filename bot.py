@@ -1950,7 +1950,7 @@ open_beni_system = register_system_admin(
     sync_command_menus=sync_command_menus,
     clear_admin_command_menu=clear_admin_command_menu,
     on_order_ui_update=lambda key, value: ORDER_UI_CACHE.__setitem__(key, value),
-    on_main_menu_update=lambda items, rows: (MAIN_MENU_CACHE.__setitem__(slice(None), items), globals().__setitem__("MAIN_MENU_ROWS", rows)),
+    on_main_menu_update=lambda items, rows: (MAIN_MENU_CACHE.__setitem__(slice(None), items), globals().__setitem__("MAIN_MENU_ROWS", rows), ORDER_UI_CACHE.__setitem__("hot", next((x.get("label") for x in items if x.get("id") == "hot"), ORDER_UI_CACHE["hot"]))),
     on_start_greeting_update=lambda value: globals().__setitem__("START_GREETING_CACHE", value),
 )
 
