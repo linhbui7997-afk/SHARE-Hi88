@@ -84,6 +84,7 @@ def esc(value):
 
 
 async def init_db():
+    global MAIN_MENU_ROWS, START_GREETING_CACHE
     os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript("""
