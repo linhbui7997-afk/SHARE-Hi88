@@ -779,7 +779,8 @@ async def order_confirm(call: CallbackQuery, state: FSMContext):
     }
     for token, replacement in replacements.items():
         completion = completion.replace(token, replacement)
-    await call.message.edit_text(completion, reply_markup=main_kb(call.from_user.id))
+    await call.message.edit_text(completion)
+    await call.message.answer("🏠 Chọn chức năng tiếp theo bên dưới.", reply_markup=main_kb(call.from_user.id))
     for admin_id in ADMIN_IDS:
         try:
             await bot.send_message(
