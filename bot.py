@@ -169,6 +169,8 @@ async def init_db():
         for key, value in await cur.fetchall():
             tag = key.removeprefix("order_ui_")
             if tag in ORDER_UI_DEFAULTS: ORDER_UI_CACHE[tag] = value
+        hot_item = next((x for x in MAIN_MENU_CACHE if x.get("id") == "hot"), None)
+        if hot_item: ORDER_UI_CACHE["hot"] = hot_item.get("label", ORDER_UI_CACHE["hot"])
 
 
 async def ensure_user(user):
