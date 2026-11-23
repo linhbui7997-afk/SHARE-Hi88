@@ -39,7 +39,7 @@ def _kb(rows):
     ])
 
 
-def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, now_text, esc, admin_keyboard, sync_command_menus, clear_admin_command_menu):
+def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, now_text, esc, admin_keyboard, sync_command_menus, clear_admin_command_menu, on_order_ui_update=None):
     async def allowed(call):
         uid = call.from_user.id
         if uid not in admin_ids:
@@ -775,7 +775,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         "qq88_name": ("[qq88_name] • Mời nhập username QQ88", "👤 Vui lòng nhập tên tài khoản QQ88:"),
         "qq88_stk": ("[qq88_stk] • Mời nhập STK QQ88", "🏦 Nhập đúng 6 số cuối STK ngân hàng đã liên kết với tài khoản QQ88:"),
         "confirm": ("[confirm] • Nút xác nhận đơn", "✅ XÁC NHẬN THANH TOÁN"),
-        "complete": ("[complete] • Nội dung hoàn tất đơn", "🎉 ĐẶT ĐƠN THÀNH CÔNG")
+        "complete": ("[complete] • Nội dung hoàn tất đơn", "🎉 <b>ĐẶT ĐƠN THÀNH CÔNG</b>\\n\\n🎁 Sản phẩm: <b>SHARE {site_name}</b>\\n🎟 Gói: <b>{product_code} điểm</b>\\n🧾 Mã đơn: <code>{order_id}</code>\\n👤 Tài khoản: <code>{account_name}</code>\\n🏦 {digits} số cuối STK: <code>{stk}</code>\\n💰 Đã thanh toán: <b>{price}</b>\\n⏳ Trạng thái: <b>{status}</b>")
     }
 
     @dp.callback_query(F.data == "bs:orderui")
@@ -836,6 +836,8 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             await db.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", ("order_ui_" + key, value))
             await db.commit()
         await audit(call.from_user.id, "edit_order_ui", key, value[:500])
+        if on_order_ui_update:
+            on_order_ui_update(key, value)
         await state.clear()
         await call.message.edit_text("✅ Đã lưu nội dung cấu hình. Nội dung được lưu bền vững trong database.", reply_markup=_kb([[("🧩 QUẢN LÝ NÚT ĐẶT ĐƠN", "bs:orderui")], [("↩️ BENI SYSTEM", "bs:home")]]))
         await call.answer("Đã lưu.")
@@ -857,6 +859,8 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             await db.execute("DELETE FROM settings WHERE key=?", ("order_ui_" + key,))
             await db.commit()
         await audit(call.from_user.id, "reset_order_ui", key)
+        if on_order_ui_update:
+            on_order_ui_update(key, ORDER_UI_ITEMS[key][1])
         await call.answer("Đã khôi phục mặc định.")
         await bs_orderui(call)
 
