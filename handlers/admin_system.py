@@ -777,6 +777,179 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await show(call, "📜 <b>NHẬT KÝ QUẢN TRỊ</b>", body, [[("🔄 LÀM MỚI", "bs:logs"), ("↩️ QUAY LẠI", "bs:home")]])
 
 
+
+    MENU_DEFAULTS = [
+        {"id":"hot","label":"🎁 ĐẶT ĐƠN KM SHARE","enabled":True,"locked":True,"action":"hot","content":"","url":"","photo":""},
+        {"id":"deposit","label":"💳 NẠP TIỀN","enabled":True,"locked":False,"action":"deposit","content":"","url":"","photo":""},
+        {"id":"wallet","label":"👛 SỐ DƯ TÀI KHOẢN","enabled":True,"locked":False,"action":"wallet","content":"","url":"","photo":""},
+        {"id":"history","label":"📊 LỊCH SỬ GIAO DỊCH","enabled":True,"locked":False,"action":"history","content":"","url":"","photo":""},
+        {"id":"support","label":"📞 LIÊN HỆ ADMIN","enabled":True,"locked":False,"action":"support","content":"","url":"","photo":""},
+        {"id":"guide","label":"📖 HƯỚNG DẪN","enabled":True,"locked":False,"action":"guide","content":"","url":"","photo":""},
+        {"id":"admin","label":"🛠 QUẢN TRỊ","enabled":True,"locked":True,"action":"admin","content":"","url":"","photo":""}
+    ]
+
+    async def menu_load():
+        async with aiosqlite.connect(db_path) as db:
+            cur = await db.execute("SELECT value FROM settings WHERE key='main_menu_config'")
+            row = await cur.fetchone()
+            cur = await db.execute("SELECT value FROM settings WHERE key='main_menu_rows'")
+            row_count = await cur.fetchone()
+            cur = await db.execute("SELECT value FROM settings WHERE key='start_greeting'")
+            greeting = await cur.fetchone()
+        try: items = json.loads(row[0]) if row else [dict(x) for x in MENU_DEFAULTS]
+        except Exception: items = [dict(x) for x in MENU_DEFAULTS]
+        try: count = max(1, min(4, int(row_count[0]))) if row_count else 2
+        except Exception: count = 2
+        return items, count, greeting[0] if greeting else "Xin chào! Chào mừng bạn đến với SHARE-Hi88."
+
+    async def menu_save(items, count):
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute("INSERT INTO settings(key,value) VALUES('main_menu_config',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (json.dumps(items, ensure_ascii=False),))
+            await db.execute("INSERT INTO settings(key,value) VALUES('main_menu_rows',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(count),))
+            await db.commit()
+        if on_main_menu_update: on_main_menu_update(items, count)
+
+    async def menu_panel(call, state):
+        items, count, greeting = await menu_load()
+        rows = []
+        for i, item in enumerate(items):
+            mark = "🔒" if item.get("locked") else ("✅" if item.get("enabled", True) else "⬜")
+            controls = [(f"{mark} {item['label']}", f"bs:menu:toggle:{item['id']}"), ("✏️", f"bs:menu:edit:{item['id']}")]
+            if i > 0: controls.append(("⬆️", f"bs:menu:up:{item['id']}"))
+            if i < len(items)-1: controls.append(("⬇️", f"bs:menu:down:{item['id']}"))
+            if item.get("action") == "custom": controls.append(("🗑", f"bs:menu:delete:{item['id']}"))
+            rows.append(controls)
+        rows += [[(f"🔢 BỐ CỤC HÀNG: {count}", "bs:menu:rows")],
+                 [("👋 LỜI CHÀO /START", "bs:menu:greeting"), ("➕ THÊM MENU", "bs:menu:add")],
+                 [("↩️ BENI SYSTEM", "bs:home")]]
+        body = "✅ đang hiện · ⬜ đang ẩn · 🔒 cố định\n⬆️⬇️ đổi thứ tự · Bấm tên để bật/tắt (🔒 không tắt)\n✏️ sửa tên / nội dung / ảnh / nút bấm\n🗑 xóa menu tự thêm · ➕ thêm menu mới"
+        await show(call, "🧩 <b>QUẢN LÝ MENU CHÍNH</b>", body, rows)
+
+    @dp.callback_query(F.data == "bs:menu")
+    async def bs_menu(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        await state.clear()
+        await menu_panel(call, state)
+
+    @dp.callback_query(F.data.startswith("bs:menu:toggle:"))
+    async def bs_menu_toggle(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        key = call.data.rsplit(":", 1)[-1]
+        items, count, _ = await menu_load()
+        item = next((x for x in items if x["id"] == key), None)
+        if not item: return await call.answer("Không tìm thấy menu.", show_alert=True)
+        if item.get("locked"): return await call.answer("🔒 Menu cố định, không thể ẩn.", show_alert=True)
+        item["enabled"] = not item.get("enabled", True)
+        await menu_save(items, count)
+        await menu_panel(call, state)
+
+    @dp.callback_query(F.data.startswith("bs:menu:up:"))
+    async def bs_menu_up(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        key = call.data.rsplit(":", 1)[-1]
+        items, count, _ = await menu_load()
+        i = next((n for n,x in enumerate(items) if x["id"] == key), -1)
+        if i > 0: items[i-1], items[i] = items[i], items[i-1]; await menu_save(items, count)
+        await menu_panel(call, state)
+
+    @dp.callback_query(F.data.startswith("bs:menu:down:"))
+    async def bs_menu_down(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        key = call.data.rsplit(":", 1)[-1]
+        items, count, _ = await menu_load()
+        i = next((n for n,x in enumerate(items) if x["id"] == key), -1)
+        if 0 <= i < len(items)-1: items[i+1], items[i] = items[i], items[i+1]; await menu_save(items, count)
+        await menu_panel(call, state)
+
+    @dp.callback_query(F.data.startswith("bs:menu:delete:"))
+    async def bs_menu_delete(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        key = call.data.rsplit(":", 1)[-1]
+        items, count, _ = await menu_load()
+        item = next((x for x in items if x["id"] == key), None)
+        if not item or item.get("action") != "custom": return await call.answer("Chỉ xóa được menu tự thêm.", show_alert=True)
+        items = [x for x in items if x["id"] != key]
+        await menu_save(items, count)
+        await audit(call.from_user.id, "delete_main_menu", key)
+        await menu_panel(call, state)
+
+    @dp.callback_query(F.data.startswith("bs:menu:edit:"))
+    async def bs_menu_edit(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        key = call.data.rsplit(":", 1)[-1]
+        items, _, _ = await menu_load()
+        item = next((x for x in items if x["id"] == key), None)
+        if not item: return await call.answer("Không tìm thấy menu.", show_alert=True)
+        await state.clear()
+        await state.update_data(menu_id=key)
+        await state.set_state(MenuForm.label)
+        await call.message.edit_text("✏️ <b>ĐỔI TÊN MENU</b>\nTên hiện tại: " + esc(item["label"]) + "\nGửi tên nút mới:")
+        await call.answer()
+
+    @dp.message(MenuForm.label)
+    async def menu_label_save(message: Message, state: FSMContext):
+        if message.from_user.id not in admin_ids: return
+        label = (message.text or "").strip()
+        if not label or len(label) > 64: return await message.answer("Tên nút tối đa 64 ký tự.")
+        data = await state.get_data()
+        key = data.get("menu_id")
+        items, count, _ = await menu_load()
+        item = next((x for x in items if x["id"] == key), None)
+        if item:
+            item["label"] = label
+            await menu_save(items, count)
+            await audit(message.from_user.id, "edit_main_menu_label", key, label)
+            await state.clear()
+            return await message.answer("✅ Đã đổi tên nút.", reply_markup=_kb([[("🧩 QUẢN LÝ MENU CHÍNH", "bs:menu")]]))
+        new_id = "custom_" + str(int(datetime.now().timestamp()))
+        items.append({"id":new_id,"label":label,"enabled":True,"locked":False,"action":"custom","content":"Bạn đã chọn menu mới.","url":"","photo":""})
+        await menu_save(items, count)
+        await audit(message.from_user.id, "add_main_menu", new_id, label)
+        await state.clear()
+        await message.answer("✅ Đã thêm menu mới. Có thể bấm ✏️ để sửa nội dung, ảnh hoặc link.", reply_markup=_kb([[("🧩 QUẢN LÝ MENU CHÍNH", "bs:menu")]]))
+
+    @dp.callback_query(F.data == "bs:menu:rows")
+    async def bs_menu_rows_prompt(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        await state.clear()
+        await state.set_state(MenuForm.rows)
+        await call.message.edit_text("🔢 Gửi số nút trên mỗi hàng (1–4).")
+        await call.answer()
+
+    @dp.message(MenuForm.rows)
+    async def menu_rows_save(message: Message, state: FSMContext):
+        if message.from_user.id not in admin_ids: return
+        try: count = int((message.text or "").strip())
+        except ValueError: return await message.answer("Chỉ nhập số từ 1 đến 4.")
+        if count not in (1,2,3,4): return await message.answer("Chỉ nhập số từ 1 đến 4.")
+        items, _, _ = await menu_load()
+        await menu_save(items, count)
+        await state.clear()
+        await message.answer(f"✅ Đã đặt {count} nút mỗi hàng.", reply_markup=_kb([[("🧩 QUẢN LÝ MENU CHÍNH", "bs:menu")]]))
+
+    @dp.callback_query(F.data == "bs:menu:greeting")
+    async def bs_menu_greeting(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        _, _, greeting = await menu_load()
+        await state.clear()
+        await state.set_state(MenuForm.greeting)
+        await call.message.edit_text("👋 <b>LỜI CHÀO /START</b>\nNội dung hiện tại:\n" + esc(greeting) + "\n\nGửi lời chào mới. Có thể dùng {username} và {id}.")
+        await call.answer()
+
+    @dp.message(MenuForm.greeting)
+    async def menu_greeting_save(message: Message, state: FSMContext):
+        if message.from_user.id not in admin_ids: return
+        value = (message.text or "").strip()
+        if not value or len(value) > 1000: return await message.answer("Lời chào tối đa 1.000 ký tự.")
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute("INSERT INTO settings(key,value) VALUES('start_greeting',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (value,))
+            await db.commit()
+        if on_start_greeting_update: on_start_greeting_update(value)
+        await audit(message.from_user.id, "edit_start_greeting")
+        await state.clear()
+        await message.answer("✅ Đã cập nhật lời chào /start.", reply_markup=_kb([[("🧩 QUẢN LÝ MENU CHÍNH", "bs:menu")]]))
+
+
     ORDER_UI_ITEMS = {
         "hot": ("[hot] • Nút ĐẶT KM SHARE", "🎁 ĐẶT ĐƠN KM SHARE"),
         "hi88": ("[hi88] • Nút SHARE Hi88", "🎁 SHARE Hi88"),
