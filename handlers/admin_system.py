@@ -26,7 +26,10 @@ class BotSettingForm(StatesGroup):
 class BotCommandForm(StatesGroup):
     value = State()
 
-PERMISSIONS = [("bot.manage", "Quản lý Bot"), ("users.read", "Xem User"), ("users.manage", "Quản lý User"), ("orders.review", "Duyệt đơn"), ("deposits.review", "Duyệt nạp tiền"), ("wallet.adjust", "Điều chỉnh ví"), ("notifications.send", "Gửi thông báo"), ("reports.read", "Xem thống kê"), ("settings.manage", "Cài đặt hệ thống"), ("admins.manage", "Quản lý Admin"), ("database.backup", "Sao lưu Database"), ("maintenance.manage", "Bảo trì")]
+class OrderUiForm(StatesGroup):
+    value = State()
+
+PERMISSIONS = [("bot.manage", "Quản lý Bot"), ("users.read", "Xem User"), ("users.manage", "Quản lý User"), ("orders.review", "Duyệt đơn"), ("deposits.review", "Duyệt nạp tiền"), ("wallet.adjust", "Điều chỉnh ví"), ("notifications.send", "Gửi thông báo"), ("reports.read", "Xem thống kê"), ("settings.manage", "Cài đặt hệ thống"), ("admins.manage", "Quản lý Admin"), ("database.backup", "Sao lưu Database"), ("maintenance.manage", "Bảo trì"), ("orders.buttons.edit", "Chỉnh sửa nút & nội dung đặt đơn")]
 
 
 def _kb(rows):
@@ -66,6 +69,8 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             required = "maintenance.manage"
         elif data.startswith(("bs:bot", "bs:cmd")):
             required = "bot.manage"
+        elif data.startswith("bs:orderui"):
+            required = "orders.buttons.edit"
         else:
             required = "settings.manage"
         async with aiosqlite.connect(db_path) as db:
@@ -122,6 +127,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         )
         rows = [
             [("🤖 BOT SETTINGS", "bs:bot"), ("👥 USER MANAGER", "bs:users")],
+            [("🧩 QUẢN LÝ NÚT ĐẶT ĐƠN", "bs:orderui")],
             [("👑 ADMIN MANAGER", "bs:admins"), ("🔐 PHÂN QUYỀN", "bs:perms")],
             [("🎨 GIAO DIỆN", "bs:ui"), ("📢 THÔNG BÁO", "bs:notify")],
             [("💾 DATABASE", "bs:db"), ("📊 THỐNG KÊ", "bs:stats")],
@@ -758,6 +764,102 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             rows = await cur.fetchall()
         body = "\n".join(f"• {esc(t)} | <code>{uid}</code> | {esc(a)} {esc(target)}" for uid,a,target,t in rows) or "Chưa có nhật ký."
         await show(call, "📜 <b>NHẬT KÝ QUẢN TRỊ</b>", body, [[("🔄 LÀM MỚI", "bs:logs"), ("↩️ QUAY LẠI", "bs:home")]])
+
+
+    ORDER_UI_ITEMS = {
+        "hot": ("[hot] • Nút ĐẶT KM SHARE", "🎁 ĐẶT ĐƠN KM SHARE"),
+        "hi88": ("[hi88] • Nút SHARE Hi88", "🎁 SHARE Hi88"),
+        "qq88": ("[qq88] • Nút SHARE QQ88", "🎁 SHARE QQ88"),
+        "hi88_name": ("[hi88_name] • Mời nhập username Hi88", "👤 Vui lòng nhập tên tài khoản Hi88:"),
+        "hi88_stk": ("[hi88_stk] • Mời nhập STK Hi88", "🏦 Nhập đúng 4 số cuối STK ngân hàng đã liên kết với tài khoản Hi88:"),
+        "qq88_name": ("[qq88_name] • Mời nhập username QQ88", "👤 Vui lòng nhập tên tài khoản QQ88:"),
+        "qq88_stk": ("[qq88_stk] • Mời nhập STK QQ88", "🏦 Nhập đúng 6 số cuối STK ngân hàng đã liên kết với tài khoản QQ88:"),
+        "confirm": ("[confirm] • Nút xác nhận đơn", "✅ XÁC NHẬN THANH TOÁN"),
+        "complete": ("[complete] • Nội dung hoàn tất đơn", "🎉 ĐẶT ĐƠN THÀNH CÔNG")
+    }
+
+    @dp.callback_query(F.data == "bs:orderui")
+    async def bs_orderui(call: CallbackQuery):
+        if not await allowed(call): return
+        rows = []
+        async with aiosqlite.connect(db_path) as db:
+            for key, (label, default) in ORDER_UI_ITEMS.items():
+                cur = await db.execute("SELECT value FROM settings WHERE key=?", ("order_ui_" + key,))
+                row = await cur.fetchone()
+                status = "📝 ĐÃ TÙY CHỈNH" if row else "⚪ MẶC ĐỊNH"
+                rows.append([(f"{label} · {status}", f"bs:orderui:item:{key}")])
+        rows.append([("↩️ QUAY LẠI BENI SYSTEM", "bs:home")])
+        await show(call, "🧩 <b>QUẢN LÝ NÚT & NỘI DUNG ĐẶT ĐƠN</b>",
+                   "Mã trong ngoặc vuông là mã nội bộ, không hiển thị cho khách. Chọn từng mục để sửa, xem trước và xác nhận lưu.", rows)
+
+    @dp.callback_query(F.data.startswith("bs:orderui:item:"))
+    async def bs_orderui_item(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        key = call.data.rsplit(":", 1)[-1]
+        if key not in ORDER_UI_ITEMS: return await call.answer("Mục không hợp lệ.", show_alert=True)
+        label, default = ORDER_UI_ITEMS[key]
+        async with aiosqlite.connect(db_path) as db:
+            cur = await db.execute("SELECT value FROM settings WHERE key=?", ("order_ui_" + key,))
+            row = await cur.fetchone()
+        current = row[0] if row else default
+        await state.clear()
+        await state.update_data(order_ui_key=key)
+        await state.set_state(OrderUiForm.value)
+        await call.message.edit_text(
+            f"✏️ <b>SỬA {esc(label)}</b>\\n\\nNội dung hiện tại:\\n<code>{esc(current[:1200])}</code>\\n\\nGửi nội dung mới. Có thể dùng xuống dòng. Với [complete], có thể dùng biến: {{site_name}}, {{product_code}}, {{order_id}}, {{account_name}}, {{stk}}, {{price}}, {{status}}.",
+            reply_markup=_kb([[("♻️ KHÔI PHỤC MẶC ĐỊNH", f"bs:orderui:reset:{key}")], [("↩️ DANH SÁCH", "bs:orderui")]])
+        )
+        await call.answer()
+
+    @dp.message(OrderUiForm.value)
+    async def bs_orderui_value(message, state: FSMContext):
+        if message.from_user.id not in admin_ids: return
+        value = (message.text or "").strip()
+        data = await state.get_data()
+        key = data.get("order_ui_key")
+        if key not in ORDER_UI_ITEMS or not value or len(value) > 3500:
+            return await message.answer("Nội dung không hợp lệ hoặc vượt 3.500 ký tự. Hãy gửi lại.")
+        await state.update_data(order_ui_value=value)
+        await message.answer(
+            "🔎 <b>XEM TRƯỚC NỘI DUNG</b>\\n\\n" + esc(value[:3500]) + "\\n\\nXác nhận lưu nội dung này?",
+            reply_markup=_kb([[("✅ XÁC NHẬN LƯU", "bs:orderui:save"), ("❌ HỦY", "bs:orderui")]])
+        )
+
+    @dp.callback_query(F.data == "bs:orderui:save")
+    async def bs_orderui_save(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        data = await state.get_data()
+        key, value = data.get("order_ui_key"), data.get("order_ui_value")
+        if key not in ORDER_UI_ITEMS or not value:
+            return await call.answer("Không có nội dung chờ lưu.", show_alert=True)
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", ("order_ui_" + key, value))
+            await db.commit()
+        await audit(call.from_user.id, "edit_order_ui", key, value[:500])
+        await state.clear()
+        await call.message.edit_text("✅ Đã lưu nội dung cấu hình. Nội dung được lưu bền vững trong database.", reply_markup=_kb([[("🧩 QUẢN LÝ NÚT ĐẶT ĐƠN", "bs:orderui")], [("↩️ BENI SYSTEM", "bs:home")]]))
+        await call.answer("Đã lưu.")
+
+    @dp.callback_query(F.data.startswith("bs:orderui:reset:"))
+    async def bs_orderui_reset_prompt(call: CallbackQuery):
+        if not await allowed(call): return
+        key = call.data.rsplit(":", 1)[-1]
+        if key not in ORDER_UI_ITEMS: return await call.answer("Mục không hợp lệ.", show_alert=True)
+        await call.message.edit_text(f"⚠️ <b>KHÔI PHỤC MẶC ĐỊNH?</b>\\n\\n{esc(ORDER_UI_ITEMS[key][0])}", reply_markup=_kb([[("✅ XÁC NHẬN", f"bs:orderui:resetconfirm:{key}")], [("❌ HỦY", f"bs:orderui:item:{key}")]]))
+        await call.answer()
+
+    @dp.callback_query(F.data.startswith("bs:orderui:resetconfirm:"))
+    async def bs_orderui_reset(call: CallbackQuery):
+        if not await allowed(call): return
+        key = call.data.rsplit(":", 1)[-1]
+        if key not in ORDER_UI_ITEMS: return await call.answer("Mục không hợp lệ.", show_alert=True)
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute("DELETE FROM settings WHERE key=?", ("order_ui_" + key,))
+            await db.commit()
+        await audit(call.from_user.id, "reset_order_ui", key)
+        await call.answer("Đã khôi phục mặc định.")
+        await bs_orderui(call)
+
 
     # Called from the legacy admin settings button after its authorization check.
     async def open_panel(call):
