@@ -155,13 +155,13 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         me = await call.bot.get_me()
         try:
             commands = await call.bot.get_my_commands()
-            command_text = "\\n".join(f"/{x.command} — {x.description}" for x in commands) or "Chưa cài lệnh."
+            command_text = "\n".join(f"/{x.command} — {x.description}" for x in commands) or "Chưa cài lệnh."
         except Exception:
             command_text = "Không đọc được danh sách lệnh."
         body = (
-            f"Trạng thái: 🟢 Đang chạy\\nTên Bot: {esc(me.full_name)}\\n"
-            f"Username: @{esc(me.username)}\\nPhiên bản panel: {VERSION}\\n\\n"
-            f"<b>LỆNH BOT</b>\\n{esc(command_text)}\\n\\n"
+            f"Trạng thái: 🟢 Đang chạy\nTên Bot: {esc(me.full_name)}\n"
+            f"Username: @{esc(me.username)}\nPhiên bản panel: {VERSION}\n\n"
+            f"<b>LỆNH BOT</b>\n{esc(command_text)}\n\n"
             "Có thể chỉnh tên, mô tả, mô tả ngắn và danh sách lệnh ngay tại đây. "
             "Username và ảnh đại diện phải đổi qua @BotFather. Không gửi Token vào chat."
         )
@@ -182,15 +182,15 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             rows.append([(f"✏️ /{item.command}", f"bs:cmdedit:{item.command}"), (f"🗑 /{item.command}", f"bs:cmddelete:{item.command}")])
         rows.append([("➕ THÊM LỆNH", "bs:cmdadd")])
         rows.append([("↩️ BOT SETTINGS", "bs:bot")])
-        body = "\\n".join(f"• /{esc(x.command)} — {esc(x.description)}" for x in commands) or "Chưa có lệnh nào."
-        await show(call, "📋 <b>QUẢN LÝ LỆNH BOT</b>", body + "\\n\\nChọn ✏️ để sửa hoặc 🗑 để xóa từng lệnh.", rows)
+        body = "\n".join(f"• /{esc(x.command)} — {esc(x.description)}" for x in commands) or "Chưa có lệnh nào."
+        await show(call, "📋 <b>QUẢN LÝ LỆNH BOT</b>", body + "\n\nChọn ✏️ để sửa hoặc 🗑 để xóa từng lệnh.", rows)
 
     @dp.callback_query(F.data == "bs:cmdadd")
     async def bs_cmd_add(call: CallbackQuery, state: FSMContext):
         if not await allowed(call): return
         await state.update_data(command_action="add", old_command=None)
         await state.set_state(BotCommandForm.value)
-        await call.message.edit_text("➕ <b>THÊM LỆNH MỚI</b>\\nGửi theo mẫu: <code>ten_lenh - Mô tả lệnh</code>\\nVí dụ: <code>help - Trợ giúp</code>", reply_markup=_kb([[("❌ HỦY", "bs:cmdcancel")]]))
+        await call.message.edit_text("➕ <b>THÊM LỆNH MỚI</b>\nGửi theo mẫu: <code>ten_lenh - Mô tả lệnh</code>\nVí dụ: <code>help - Trợ giúp</code>", reply_markup=_kb([[("❌ HỦY", "bs:cmdcancel")]]))
         await call.answer()
 
     @dp.callback_query(F.data.startswith("bs:cmdedit:"))
@@ -202,7 +202,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not item: return await call.answer("Không tìm thấy lệnh.", show_alert=True)
         await state.update_data(command_action="edit", old_command=name)
         await state.set_state(BotCommandForm.value)
-        await call.message.edit_text(f"✏️ <b>SỬA LỆNH /{esc(name)}</b>\\nGửi tên và mô tả mới theo mẫu:\\n<code>ten_lenh_moi - Mô tả mới</code>\\n\\nHiện tại: {esc(item.description)}", reply_markup=_kb([[("❌ HỦY", "bs:cmdcancel")]]))
+        await call.message.edit_text(f"✏️ <b>SỬA LỆNH /{esc(name)}</b>\nGửi tên và mô tả mới theo mẫu:\n<code>ten_lenh_moi - Mô tả mới</code>\n\nHiện tại: {esc(item.description)}", reply_markup=_kb([[("❌ HỦY", "bs:cmdcancel")]]))
         await call.answer()
 
     @dp.callback_query(F.data.startswith("bs:cmddelete:"))
@@ -256,7 +256,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if data.get("command_action") == "edit" and any(x.command == name and x.command != old for x in commands):
             return await message.answer("Tên lệnh mới đã được sử dụng.")
         await state.update_data(new_command=name, new_description=description)
-        await message.answer(f"⚠️ <b>XÁC NHẬN {('THÊM' if data.get('command_action') == 'add' else 'SỬA')} LỆNH</b>\\n\\n/{esc(name)} — {esc(description)}", reply_markup=_kb([[("✅ XÁC NHẬN", "bs:cmdconfirm"), ("❌ HỦY", "bs:cmdcancel")]]))
+        await message.answer(f"⚠️ <b>XÁC NHẬN {('THÊM' if data.get('command_action') == 'add' else 'SỬA')} LỆNH</b>\n\n/{esc(name)} — {esc(description)}", reply_markup=_kb([[("✅ XÁC NHẬN", "bs:cmdconfirm"), ("❌ HỦY", "bs:cmdcancel")]]))
 
     @dp.callback_query(F.data == "bs:cmdconfirm")
     async def bs_cmd_confirm(call: CallbackQuery, state: FSMContext):
@@ -289,7 +289,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if field not in ("name", "description", "short"):
             return await call.answer("Không thể xóa trường này.", show_alert=True)
         await call.message.edit_text(
-            f"⚠️ <b>XÁC NHẬN XÓA {'TÊN BOT' if field == 'name' else ('MÔ TẢ BOT' if field == 'description' else 'MÔ TẢ NGẮN')}?</b>\\n\\n"
+            f"⚠️ <b>XÁC NHẬN XÓA {'TÊN BOT' if field == 'name' else ('MÔ TẢ BOT' if field == 'description' else 'MÔ TẢ NGẮN')}?</b>\n\n"
             "Nội dung hiện tại sẽ được làm trống.",
             reply_markup=_kb([
                 [("✅ XÁC NHẬN XÓA", f"bs:botclearconfirm:{field}")],
@@ -328,7 +328,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             "name": ("ĐỔI TÊN BOT", "Gửi tên mới (1–64 ký tự)."),
             "description": ("ĐỔI MÔ TẢ BOT", "Gửi mô tả mới (tối đa 512 ký tự)."),
             "short": ("ĐỔI MÔ TẢ NGẮN", "Gửi mô tả ngắn (tối đa 120 ký tự)."),
-            "commands": ("QUẢN LÝ LỆNH", "Gửi từng dòng theo mẫu: start - Mở menu\\nhelp - Trợ giúp\\nChỉ dùng chữ thường, số và dấu gạch dưới cho tên lệnh.")
+            "commands": ("QUẢN LÝ LỆNH", "Gửi từng dòng theo mẫu: start - Mở menu\nhelp - Trợ giúp\nChỉ dùng chữ thường, số và dấu gạch dưới cho tên lệnh.")
         }
         if field == "commands":
             await command_menu(call)
@@ -337,7 +337,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await state.update_data(bot_field=field)
         await state.set_state(BotSettingForm.value)
         title, prompt = prompts[field]
-        await call.message.edit_text(f"✏️ <b>{title}</b>\\n\\n{prompt}", reply_markup=_kb([[("❌ HỦY", "bs:botcancel")]]))
+        await call.message.edit_text(f"✏️ <b>{title}</b>\n\n{prompt}", reply_markup=_kb([[("❌ HỦY", "bs:botcancel")]]))
         await call.answer()
 
     @dp.callback_query(F.data == "bs:botcancel")
@@ -370,11 +370,11 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
                 parsed.append((command, description))
             if not parsed or len(parsed) > 100:
                 return await message.answer("Cần từ 1 đến 100 lệnh hợp lệ.")
-            value = "\\n".join(f"{c} - {d}" for c,d in parsed)
+            value = "\n".join(f"{c} - {d}" for c,d in parsed)
         await state.update_data(bot_value=value)
         preview = esc(value[:2500])
         await message.answer(
-            f"⚠️ <b>XÁC NHẬN CẬP NHẬT BOT?</b>\\n\\n{preview}",
+            f"⚠️ <b>XÁC NHẬN CẬP NHẬT BOT?</b>\n\n{preview}",
             reply_markup=_kb([[("✅ XÁC NHẬN", "bs:botconfirm"), ("❌ HỦY", "bs:botcancel")]])
         )
 
@@ -567,7 +567,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             await db.commit()
         await audit(call.from_user.id, "set_ui_theme", details=theme)
         await call.message.edit_text(
-            f"🎨 <b>UI MANAGER</b>\\n\\nChế độ hiển thị đã lưu: <b>{esc(theme.upper())}</b>\\n\\nLưu ý: theme chỉ là cấu hình nội bộ; Telegram chat không thể đổi màu giao diện ứng dụng Telegram.",
+            f"🎨 <b>UI MANAGER</b>\n\nChế độ hiển thị đã lưu: <b>{esc(theme.upper())}</b>\n\nLưu ý: theme chỉ là cấu hình nội bộ; Telegram chat không thể đổi màu giao diện ứng dụng Telegram.",
             reply_markup=_kb([[("🌙 DARK MODE", "bs:theme:dark"), ("☀️ LIGHT MODE", "bs:theme:light")], [("↩️ QUAY LẠI", "bs:home")]])
         )
         await call.answer("Đã lưu giao diện.")
@@ -608,9 +608,9 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await audit(call.from_user.id, "set_auto_announce", details=value)
         enabled = value
         await call.message.edit_text(
-            "📢 <b>NOTIFICATION MANAGER</b>\\n\\n"
-            f"Kênh thông báo đơn: <code>{esc(os.getenv('ORDER_ANNOUNCE_CHANNEL', '@sharegame1'))}</code>\\n"
-            f"Thông báo tự động: {'🟢 BẬT' if enabled == '1' else '⚫ TẮT'}\\n\\n"
+            "📢 <b>NOTIFICATION MANAGER</b>\n\n"
+            f"Kênh thông báo đơn: <code>{esc(os.getenv('ORDER_ANNOUNCE_CHANNEL', '@sharegame1'))}</code>\n"
+            f"Thông báo tự động: {'🟢 BẬT' if enabled == '1' else '⚫ TẮT'}\n\n"
             "Cấu hình kênh có thể thay đổi bằng Railway Variables: ORDER_ANNOUNCE_CHANNEL.",
             reply_markup=_kb([[("🔔 BẬT TỰ ĐỘNG", "bs:auto:1"), ("🔕 TẮT TỰ ĐỘNG", "bs:auto:0")], [("↩️ QUAY LẠI", "bs:home")]])
         )
@@ -666,7 +666,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not re.fullmatch(r"share_hi88_\d{8}_\d{6}\.sqlite3", name):
             return await call.answer("Tên bản sao lưu không hợp lệ.", show_alert=True)
         await call.message.edit_text(
-            f"⚠️ <b>XÁC NHẬN XÓA BẢN SAO LƯU?</b>\\n\\n<code>{esc(name)}</code>\\n"
+            f"⚠️ <b>XÁC NHẬN XÓA BẢN SAO LƯU?</b>\n\n<code>{esc(name)}</code>\n"
             "Thao tác này chỉ xóa file backup đã chọn, không ảnh hưởng database đang chạy.",
             reply_markup=_kb([
                 [("✅ XÁC NHẬN XÓA", "bs:backupdelconfirm:" + name)],
@@ -775,7 +775,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         "qq88_name": ("[qq88_name] • Mời nhập username QQ88", "👤 Vui lòng nhập tên tài khoản QQ88:"),
         "qq88_stk": ("[qq88_stk] • Mời nhập STK QQ88", "🏦 Nhập đúng 6 số cuối STK ngân hàng đã liên kết với tài khoản QQ88:"),
         "confirm": ("[confirm] • Nút xác nhận đơn", "✅ XÁC NHẬN THANH TOÁN"),
-        "complete": ("[complete] • Nội dung hoàn tất đơn", "🎉 <b>ĐẶT ĐƠN THÀNH CÔNG</b>\\n\\n🎁 Sản phẩm: <b>SHARE {site_name}</b>\\n🎟 Gói: <b>{product_code} điểm</b>\\n🧾 Mã đơn: <code>{order_id}</code>\\n👤 Tài khoản: <code>{account_name}</code>\\n🏦 {digits} số cuối STK: <code>{stk}</code>\\n💰 Đã thanh toán: <b>{price}</b>\\n⏳ Trạng thái: <b>{status}</b>")
+        "complete": ("[complete] • Nội dung hoàn tất đơn", "🎉 <b>ĐẶT ĐƠN THÀNH CÔNG</b>\n\n🎁 Sản phẩm: <b>SHARE {site_name}</b>\n🎟 Gói: <b>{product_code} điểm</b>\n🧾 Mã đơn: <code>{order_id}</code>\n👤 Tài khoản: <code>{account_name}</code>\n🏦 {digits} số cuối STK: <code>{stk}</code>\n💰 Đã thanh toán: <b>{price}</b>\n⏳ Trạng thái: <b>{status}</b>")
     }
 
     @dp.callback_query(F.data == "bs:orderui")
@@ -806,7 +806,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await state.update_data(order_ui_key=key)
         await state.set_state(OrderUiForm.value)
         await call.message.edit_text(
-            f"✏️ <b>SỬA {esc(label)}</b>\\n\\nNội dung hiện tại:\\n<code>{esc(current[:1200])}</code>\\n\\nGửi nội dung mới. Có thể dùng xuống dòng. Với [complete], có thể dùng biến: {{site_name}}, {{product_code}}, {{order_id}}, {{account_name}}, {{stk}}, {{price}}, {{status}}.",
+            f"✏️ <b>SỬA {esc(label)}</b>\n\nNội dung hiện tại:\n<code>{esc(current[:1200])}</code>\n\nGửi nội dung mới. Có thể dùng xuống dòng. Với [complete], có thể dùng biến: {{site_name}}, {{product_code}}, {{order_id}}, {{account_name}}, {{stk}}, {{price}}, {{status}}.",
             reply_markup=_kb([[("♻️ KHÔI PHỤC MẶC ĐỊNH", f"bs:orderui:reset:{key}")], [("↩️ DANH SÁCH", "bs:orderui")]])
         )
         await call.answer()
@@ -821,7 +821,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             return await message.answer("Nội dung không hợp lệ hoặc vượt 3.500 ký tự. Hãy gửi lại.")
         await state.update_data(order_ui_value=value)
         await message.answer(
-            "🔎 <b>XEM TRƯỚC NỘI DUNG</b>\\n\\n" + esc(value[:3500]) + "\\n\\nXác nhận lưu nội dung này?",
+            "🔎 <b>XEM TRƯỚC NỘI DUNG</b>\n\n" + esc(value[:3500]) + "\n\nXác nhận lưu nội dung này?",
             reply_markup=_kb([[("✅ XÁC NHẬN LƯU", "bs:orderui:save"), ("❌ HỦY", "bs:orderui")]])
         )
 
@@ -847,7 +847,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not await allowed(call): return
         key = call.data.rsplit(":", 1)[-1]
         if key not in ORDER_UI_ITEMS: return await call.answer("Mục không hợp lệ.", show_alert=True)
-        await call.message.edit_text(f"⚠️ <b>KHÔI PHỤC MẶC ĐỊNH?</b>\\n\\n{esc(ORDER_UI_ITEMS[key][0])}", reply_markup=_kb([[("✅ XÁC NHẬN", f"bs:orderui:resetconfirm:{key}")], [("❌ HỦY", f"bs:orderui:item:{key}")]]))
+        await call.message.edit_text(f"⚠️ <b>KHÔI PHỤC MẶC ĐỊNH?</b>\n\n{esc(ORDER_UI_ITEMS[key][0])}", reply_markup=_kb([[("✅ XÁC NHẬN", f"bs:orderui:resetconfirm:{key}")], [("❌ HỦY", f"bs:orderui:item:{key}")]]))
         await call.answer()
 
     @dp.callback_query(F.data.startswith("bs:orderui:resetconfirm:"))
