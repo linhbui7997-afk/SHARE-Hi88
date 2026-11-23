@@ -1,5 +1,6 @@
 import asyncio
 import html
+import json
 import logging
 import os
 import re
@@ -46,6 +47,18 @@ SEPAY_PREFIX = re.sub(r"[^A-Z0-9]", "", os.getenv("SEPAY_CODE_PREFIX", "SH").upp
 TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 ORDER_UI_DEFAULTS = {"hot":"🎁 ĐẶT ĐƠN KM SHARE","hi88":"🎁 SHARE Hi88","qq88":"🎁 SHARE QQ88","hi88_name":"👤 Vui lòng nhập tên tài khoản Hi88:","hi88_stk":"🏦 Nhập đúng 4 số cuối STK ngân hàng đã liên kết với tài khoản Hi88:","qq88_name":"👤 Vui lòng nhập tên tài khoản QQ88:","qq88_stk":"🏦 Nhập đúng 6 số cuối STK ngân hàng đã liên kết với tài khoản QQ88:","confirm":"✅ XÁC NHẬN THANH TOÁN","complete":"🎉 <b>ĐẶT ĐƠN THÀNH CÔNG</b>\n\n━━━━━━━━━━━━━━━━━━\n✅ Thanh toán đơn hàng thành công!\n\n🎁 Sản phẩm: <b>SHARE {site_name}</b>\n🎟 Gói khuyến mãi: <b>{product_code} điểm</b>\n🧾 Mã đơn: <code>{order_id}</code>\n👤 Tài khoản: <code>{account_name}</code>\n🏦 {digits} số cuối STK: <code>{stk}</code>\n💰 Đã thanh toán: <b>{price}</b>\n⏳ Trạng thái: <b>{status}</b>\n━━━━━━━━━━━━━━━━━━\n\n📢 Đơn hàng đã được gửi đến quản trị viên. Vui lòng chờ thông báo khi đơn được xử lý hoàn tất."}
 ORDER_UI_CACHE = dict(ORDER_UI_DEFAULTS)
+MAIN_MENU_DEFAULTS = [
+    {"id":"hot","label":"🎁 ĐẶT ĐƠN KM SHARE","enabled":True,"locked":True,"action":"hot","content":"","url":"","photo":""},
+    {"id":"deposit","label":"💳 NẠP TIỀN","enabled":True,"locked":False,"action":"deposit","content":"","url":"","photo":""},
+    {"id":"wallet","label":"👛 SỐ DƯ TÀI KHOẢN","enabled":True,"locked":False,"action":"wallet","content":"","url":"","photo":""},
+    {"id":"history","label":"📊 LỊCH SỬ GIAO DỊCH","enabled":True,"locked":False,"action":"history","content":"","url":"","photo":""},
+    {"id":"support","label":"📞 LIÊN HỆ ADMIN","enabled":True,"locked":False,"action":"support","content":"","url":"","photo":""},
+    {"id":"guide","label":"📖 HƯỚNG DẪN","enabled":True,"locked":False,"action":"guide","content":"","url":"","photo":""},
+    {"id":"admin","label":"🛠 QUẢN TRỊ","enabled":True,"locked":True,"action":"admin","content":"","url":"","photo":""}
+]
+MAIN_MENU_CACHE = [dict(x) for x in MAIN_MENU_DEFAULTS]
+MAIN_MENU_ROWS = 2
+START_GREETING_CACHE = "Xin chào! Chào mừng bạn đến với SHARE-Hi88."
 
 if not BOT_TOKEN:
     raise RuntimeError("Missing BOT_TOKEN environment variable")
@@ -136,6 +149,21 @@ async def init_db():
                 [("HI88", "108", 50000, 1, now_text()), ("QQ88", "108", 50000, 1, now_text())]
             )
         await db.commit()
+        cur = await db.execute("SELECT value FROM settings WHERE key='main_menu_config'")
+        saved_menu = await cur.fetchone()
+        if saved_menu:
+            try:
+                parsed = json.loads(saved_menu[0])
+                if isinstance(parsed, list): MAIN_MENU_CACHE[:] = parsed
+            except (ValueError, TypeError): pass
+        cur = await db.execute("SELECT value FROM settings WHERE key='main_menu_rows'")
+        saved_rows = await cur.fetchone()
+        if saved_rows:
+            try: MAIN_MENU_ROWS = max(1, min(4, int(saved_rows[0])))
+            except (TypeError, ValueError): pass
+        cur = await db.execute("SELECT value FROM settings WHERE key='start_greeting'")
+        saved_greeting = await cur.fetchone()
+        if saved_greeting: START_GREETING_CACHE = saved_greeting[0]
         cur = await db.execute("SELECT key,value FROM settings WHERE key LIKE 'order_ui_%'")
         for key, value in await cur.fetchall():
             tag = key.removeprefix("order_ui_")
@@ -172,19 +200,28 @@ async def set_setting(key, value):
         await db.commit()
 
 
-def main_kb(user_id=None):
-    rows = [
-        [KeyboardButton(text=ORDER_UI_CACHE["hot"]), KeyboardButton(text="💳 NẠP TIỀN")],
-        [KeyboardButton(text="👛 SỐ DƯ TÀI KHOẢN"), KeyboardButton(text="📊 LỊCH SỬ GIAO DỊCH")],
-        [KeyboardButton(text="📞 LIÊN HỆ ADMIN"), KeyboardButton(text="📖 HƯỚNG DẪN")],
-    ]
-    if user_id is not None and is_admin(user_id):
-        rows.append([KeyboardButton(text="🛠 QUẢN TRỊ")])
-    return ReplyKeyboardMarkup(
-        keyboard=rows, resize_keyboard=True, is_persistent=True,
-        input_field_placeholder="Chọn chức năng bạn muốn sử dụng"
-    )
+def menu_item(menu_id):
+    return next((item for item in MAIN_MENU_CACHE if item.get("id") == menu_id), None)
 
+
+def menu_label(menu_id):
+    item = menu_item(menu_id)
+    return item.get("label", "") if item else ""
+
+
+def main_kb(user_id=None):
+    visible = [item for item in MAIN_MENU_CACHE if item.get("enabled", True) and item.get("id") != "admin"]
+    if user_id is not None and is_admin(user_id):
+        admin_item = menu_item("admin")
+        if admin_item and admin_item.get("enabled", True): visible.append(admin_item)
+    rows, row = [], []
+    for item in visible:
+        row.append(KeyboardButton(text=item["label"]))
+        if len(row) >= MAIN_MENU_ROWS:
+            rows.append(row)
+            row = []
+    if row: rows.append(row)
+    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True, input_field_placeholder="Chọn chức năng bạn muốn sử dụng")
 
 def back_kb():
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ QUAY LẠI MENU", callback_data="home")]])
@@ -279,7 +316,9 @@ async def home_text(user):
     date_text = now.strftime("%d/%m/%y")
     time_text = now.strftime("%H:%M:%S")
     username = f"@{esc(user.username)}" if user.username else esc(user.first_name or "bạn")
+    greeting = START_GREETING_CACHE.replace("{username}", username).replace("{id}", str(user.id))
     return (
+        f"{greeting}\\n"
         f"📆 {date_text}   ⏰ {time_text} (GMT+7)\n"
         f"💬 Xin chào, {username}\n"
         f"⊕ Số Dư Ví : <b>{money(wallet)}</b>\n"
@@ -406,7 +445,7 @@ async def reply_buy(message: Message, state: FSMContext):
     )
 
 
-@dp.message(F.text == "💳 NẠP TIỀN")
+@dp.message(lambda message: message.text == menu_label("deposit"))
 async def reply_deposit(message: Message, state: FSMContext):
     await state.set_state(DepositForm.amount)
     await message.answer(
@@ -418,7 +457,7 @@ async def reply_deposit(message: Message, state: FSMContext):
     )
 
 
-@dp.message(F.text == "👛 SỐ DƯ TÀI KHOẢN")
+@dp.message(lambda message: message.text == menu_label("wallet"))
 async def reply_account(message: Message):
     row = await get_user(message.from_user.id)
     await message.answer(
@@ -430,7 +469,7 @@ async def reply_account(message: Message):
     )
 
 
-@dp.message(F.text == "📊 LỊCH SỬ GIAO DỊCH")
+@dp.message(lambda message: message.text == menu_label("history"))
 async def reply_history(message: Message):
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("SELECT code,amount,status,created_at FROM deposits WHERE user_id=? ORDER BY id DESC LIMIT 10", (message.from_user.id,))
@@ -444,14 +483,14 @@ async def reply_history(message: Message):
     await message.answer("\n".join(lines), reply_markup=main_kb(message.from_user.id))
 
 
-@dp.message(F.text == "📞 LIÊN HỆ ADMIN")
+@dp.message(lambda message: message.text == menu_label("support"))
 async def reply_support(message: Message):
     url = os.getenv("SUPPORT_URL", "https://t.me/nilatao")
     await message.answer("📞 <b>LIÊN HỆ HỖ TRỢ</b>\nNhấn nút bên dưới để liên hệ quản trị viên.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📩 NHẮN ADMIN", url=url)]]))
 
 
-@dp.message(F.text == "📖 HƯỚNG DẪN")
+@dp.message(lambda message: message.text == menu_label("guide"))
 async def reply_guide(message: Message):
     await message.answer(
         "📖 <b>HƯỚNG DẪN MUA HÀNG</b>\n\n"
@@ -467,7 +506,7 @@ async def reply_guide(message: Message):
     )
 
 
-@dp.message(F.text == "🛠 QUẢN TRỊ")
+@dp.message(lambda message: message.text == menu_label("admin"))
 async def reply_admin(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ Bạn không có quyền truy cập.")
@@ -1910,6 +1949,8 @@ open_beni_system = register_system_admin(
     sync_command_menus=sync_command_menus,
     clear_admin_command_menu=clear_admin_command_menu,
     on_order_ui_update=lambda key, value: ORDER_UI_CACHE.__setitem__(key, value),
+    on_main_menu_update=lambda items, rows: (MAIN_MENU_CACHE.__setitem__(slice(None), items), globals().__setitem__("MAIN_MENU_ROWS", rows)),
+    on_start_greeting_update=lambda value: globals().__setitem__("START_GREETING_CACHE", value),
 )
 
 
