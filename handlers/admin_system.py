@@ -779,8 +779,9 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
     }
 
     @dp.callback_query(F.data == "bs:orderui")
-    async def bs_orderui(call: CallbackQuery):
+    async def bs_orderui(call: CallbackQuery, state: FSMContext):
         if not await allowed(call): return
+        await state.clear()
         rows = []
         async with aiosqlite.connect(db_path) as db:
             for key, (label, default) in ORDER_UI_ITEMS.items():
@@ -843,16 +844,18 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await call.answer("Đã lưu.")
 
     @dp.callback_query(F.data.startswith("bs:orderui:reset:"))
-    async def bs_orderui_reset_prompt(call: CallbackQuery):
+    async def bs_orderui_reset_prompt(call: CallbackQuery, state: FSMContext):
         if not await allowed(call): return
+        await state.clear()
         key = call.data.rsplit(":", 1)[-1]
         if key not in ORDER_UI_ITEMS: return await call.answer("Mục không hợp lệ.", show_alert=True)
         await call.message.edit_text(f"⚠️ <b>KHÔI PHỤC MẶC ĐỊNH?</b>\n\n{esc(ORDER_UI_ITEMS[key][0])}", reply_markup=_kb([[("✅ XÁC NHẬN", f"bs:orderui:resetconfirm:{key}")], [("❌ HỦY", f"bs:orderui:item:{key}")]]))
         await call.answer()
 
     @dp.callback_query(F.data.startswith("bs:orderui:resetconfirm:"))
-    async def bs_orderui_reset(call: CallbackQuery):
+    async def bs_orderui_reset(call: CallbackQuery, state: FSMContext):
         if not await allowed(call): return
+        await state.clear()
         key = call.data.rsplit(":", 1)[-1]
         if key not in ORDER_UI_ITEMS: return await call.answer("Mục không hợp lệ.", show_alert=True)
         async with aiosqlite.connect(db_path) as db:
@@ -861,8 +864,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await audit(call.from_user.id, "reset_order_ui", key)
         if on_order_ui_update:
             on_order_ui_update(key, ORDER_UI_ITEMS[key][1])
-        await call.answer("Đã khôi phục mặc định.")
-        await bs_orderui(call)
+        await bs_orderui(call, state)
 
 
     # Called from the legacy admin settings button after its authorization check.
