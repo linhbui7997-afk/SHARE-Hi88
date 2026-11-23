@@ -44,6 +44,8 @@ SEPAY_QR_TEMPLATE = os.getenv("SEPAY_QR_TEMPLATE", "compact2")
 ORDER_ANNOUNCE_CHANNEL = os.getenv("ORDER_ANNOUNCE_CHANNEL", "@sharegame1")
 SEPAY_PREFIX = re.sub(r"[^A-Z0-9]", "", os.getenv("SEPAY_CODE_PREFIX", "SH").upper())[:5] or "SH"
 TZ = ZoneInfo("Asia/Ho_Chi_Minh")
+ORDER_UI_DEFAULTS = {"hot":"🎁 ĐẶT ĐƠN KM SHARE","hi88":"🎁 SHARE Hi88","qq88":"🎁 SHARE QQ88","hi88_name":"👤 Vui lòng nhập tên tài khoản Hi88:","hi88_stk":"🏦 Nhập đúng 4 số cuối STK ngân hàng đã liên kết với tài khoản Hi88:","qq88_name":"👤 Vui lòng nhập tên tài khoản QQ88:","qq88_stk":"🏦 Nhập đúng 6 số cuối STK ngân hàng đã liên kết với tài khoản QQ88:","confirm":"✅ XÁC NHẬN THANH TOÁN","complete":"🎉 <b>ĐẶT ĐƠN THÀNH CÔNG</b>\\n\\n━━━━━━━━━━━━━━━━━━\\n✅ Thanh toán đơn hàng thành công!\\n\\n🎁 Sản phẩm: <b>SHARE {site_name}</b>\\n🎟 Gói khuyến mãi: <b>{product_code} điểm</b>\\n🧾 Mã đơn: <code>{order_id}</code>\\n👤 Tài khoản: <code>{account_name}</code>\\n🏦 {digits} số cuối STK: <code>{stk}</code>\\n💰 Đã thanh toán: <b>{price}</b>\\n⏳ Trạng thái: <b>{status}</b>\\n━━━━━━━━━━━━━━━━━━\\n\\n📢 Đơn hàng đã được gửi đến quản trị viên. Vui lòng chờ thông báo khi đơn được xử lý hoàn tất."}
+ORDER_UI_CACHE = dict(ORDER_UI_DEFAULTS)
 
 if not BOT_TOKEN:
     raise RuntimeError("Missing BOT_TOKEN environment variable")
@@ -134,6 +136,10 @@ async def init_db():
                 [("HI88", "108", 50000, 1, now_text()), ("QQ88", "108", 50000, 1, now_text())]
             )
         await db.commit()
+        cur = await db.execute("SELECT key,value FROM settings WHERE key LIKE 'order_ui_%'")
+        for key, value in await cur.fetchall():
+            tag = key.removeprefix("order_ui_")
+            if tag in ORDER_UI_DEFAULTS: ORDER_UI_CACHE[tag] = value
 
 
 async def ensure_user(user):
