@@ -990,20 +990,6 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
 
 
 
-    @dp.message(F.text)
-    async def custom_main_menu_handler(message: Message):
-        if not message.text: return
-        items, _, _ = await menu_load()
-        item = next((x for x in items if x.get("label") == message.text and x.get("action") == "custom" and x.get("enabled", True)), None)
-        if not item: return
-        body = item.get("content") or item.get("label", "")
-        markup = _kb([[("🔗 MỞ LIÊN KẾT", "noop")]]) if False else None
-        if item.get("url"):
-            markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔗 MỞ LIÊN KẾT", url=item["url"])]])
-        if item.get("photo"):
-            await message.answer_photo(item["photo"], caption=body, reply_markup=markup)
-        else:
-            await message.answer(body, reply_markup=markup)
 
     ORDER_UI_ITEMS = {
         "hot": ("[hot] • Nút ĐẶT KM SHARE", "🎁 ĐẶT ĐƠN KM SHARE"),
@@ -1104,6 +1090,22 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if on_order_ui_update:
             on_order_ui_update(key, ORDER_UI_ITEMS[key][1])
         await bs_orderui(call, state)
+
+
+    @dp.message(F.text)
+    async def custom_main_menu_handler(message: Message):
+        if not message.text: return
+        items, _, _ = await menu_load()
+        item = next((x for x in items if x.get("label") == message.text and x.get("action") == "custom" and x.get("enabled", True)), None)
+        if not item: return
+        body = item.get("content") or item.get("label", "")
+        markup = _kb([[("🔗 MỞ LIÊN KẾT", "noop")]]) if False else None
+        if item.get("url"):
+            markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔗 MỞ LIÊN KẾT", url=item["url"])]])
+        if item.get("photo"):
+            await message.answer_photo(item["photo"], caption=body, reply_markup=markup)
+        else:
+            await message.answer(body, reply_markup=markup)
 
 
     # Called from the legacy admin settings button after its authorization check.
