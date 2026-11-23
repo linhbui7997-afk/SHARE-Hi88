@@ -680,7 +680,7 @@ async def order_back_account(call: CallbackQuery, state: FSMContext):
     await state.set_state(OrderForm.account_name)
     await call.message.edit_text(
         f"📝 <b>THÔNG TIN ĐẶT HÀNG • {esc(data['site_name'])}</b>\n\n"
-        f"👤 Vui lòng nhập lại tên tài khoản {esc(data['site_name'])}:",
+        f"{esc(ORDER_UI_CACHE['qq88_name' if 'QQ88' in data['site_name'].upper() else 'hi88_name'])}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="↩️ QUAY LẠI BƯỚC 1", callback_data="buy")],
             [InlineKeyboardButton(text="🏠 VỀ MENU CHÍNH", callback_data="home")]
@@ -696,7 +696,7 @@ async def order_back_stk(call: CallbackQuery, state: FSMContext):
         return await call.answer("Vui lòng nhập lại thông tin tài khoản.", show_alert=True)
     await state.set_state(OrderForm.stk_last4)
     await call.message.edit_text(
-        f"🏦 Nhập lại <b>{required_stk_digits(data.get('site_name', ''))} số cuối STK ngân hàng đã liên kết</b> với tài khoản {esc(data.get('site_name','game'))}:",
+        f"{esc(ORDER_UI_CACHE['qq88_stk' if 'QQ88' in data.get('site_name', '').upper() else 'hi88_stk'])}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="↩️ QUAY LẠI BƯỚC 2", callback_data="order_back_account")],
             [InlineKeyboardButton(text="🏠 VỀ MENU CHÍNH", callback_data="home")]
