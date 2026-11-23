@@ -4,6 +4,7 @@ This module adds a safe, persistent inline administration dashboard without
 changing customer checkout, wallet, SePay or order processing flows.
 """
 import os
+import json
 import re
 import sqlite3
 from datetime import datetime
@@ -13,7 +14,7 @@ import aiosqlite
 from aiogram import F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
+from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 
 VERSION = "1.1.0"
 
@@ -29,7 +30,15 @@ class BotCommandForm(StatesGroup):
 class OrderUiForm(StatesGroup):
     value = State()
 
-PERMISSIONS = [("bot.manage", "Quản lý Bot"), ("users.read", "Xem User"), ("users.manage", "Quản lý User"), ("orders.review", "Duyệt đơn"), ("deposits.review", "Duyệt nạp tiền"), ("wallet.adjust", "Điều chỉnh ví"), ("notifications.send", "Gửi thông báo"), ("reports.read", "Xem thống kê"), ("settings.manage", "Cài đặt hệ thống"), ("admins.manage", "Quản lý Admin"), ("database.backup", "Sao lưu Database"), ("maintenance.manage", "Bảo trì"), ("orders.buttons.edit", "Chỉnh sửa nút & nội dung đặt đơn")]
+class MenuForm(StatesGroup):
+    label = State()
+    content = State()
+    url = State()
+    photo = State()
+    rows = State()
+    greeting = State()
+
+PERMISSIONS = [("bot.manage", "Quản lý Bot"), ("users.read", "Xem User"), ("users.manage", "Quản lý User"), ("orders.review", "Duyệt đơn"), ("deposits.review", "Duyệt nạp tiền"), ("wallet.adjust", "Điều chỉnh ví"), ("notifications.send", "Gửi thông báo"), ("reports.read", "Xem thống kê"), ("settings.manage", "Cài đặt hệ thống"), ("admins.manage", "Quản lý Admin"), ("database.backup", "Sao lưu Database"), ("maintenance.manage", "Bảo trì"), ("orders.buttons.edit", "Chỉnh sửa nút & nội dung đặt đơn"), ("main.menu.edit", "Quản lý Menu chính")]
 
 
 def _kb(rows):
@@ -39,7 +48,7 @@ def _kb(rows):
     ])
 
 
-def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, now_text, esc, admin_keyboard, sync_command_menus, clear_admin_command_menu, on_order_ui_update=None):
+def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, now_text, esc, admin_keyboard, sync_command_menus, clear_admin_command_menu, on_order_ui_update=None, on_main_menu_update=None, on_start_greeting_update=None):
     async def allowed(call):
         uid = call.from_user.id
         if uid not in admin_ids:
@@ -71,6 +80,8 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             required = "bot.manage"
         elif data.startswith("bs:orderui"):
             required = "orders.buttons.edit"
+        elif data.startswith("bs:menu"):
+            required = "main.menu.edit"
         else:
             required = "settings.manage"
         async with aiosqlite.connect(db_path) as db:
@@ -127,7 +138,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         )
         rows = [
             [("🤖 BOT SETTINGS", "bs:bot"), ("👥 USER MANAGER", "bs:users")],
-            [("🧩 QUẢN LÝ NÚT ĐẶT ĐƠN", "bs:orderui")],
+            [("🧩 QUẢN LÝ NÚT ĐẶT ĐƠN", "bs:orderui"), ("🧩 QUẢN LÝ MENU CHÍNH", "bs:menu")],
             [("👑 ADMIN MANAGER", "bs:admins"), ("🔐 PHÂN QUYỀN", "bs:perms")],
             [("🎨 GIAO DIỆN", "bs:ui"), ("📢 THÔNG BÁO", "bs:notify")],
             [("💾 DATABASE", "bs:db"), ("📊 THỐNG KÊ", "bs:stats")],
