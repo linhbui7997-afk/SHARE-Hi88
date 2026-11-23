@@ -373,7 +373,7 @@ async def help_command(message: Message):
     )
 
 
-@dp.message(F.text)
+@dp.message(lambda message: message.text == ORDER_UI_CACHE["hot"])
 async def reply_buy(message: Message, state: FSMContext):
     if (message.text or "").strip() != ORDER_UI_CACHE["hot"]: return
     await state.clear()
@@ -545,7 +545,8 @@ async def buy(call: CallbackQuery, state: FSMContext):
     row = []
     for r in sites:
         label = f"🎁 SHARE {r[1].title()}"
-        row.append(InlineKeyboardButton(text=label, callback_data=f"site:{r[0]}"))
+        ui_key = "qq88" if "QQ88" in str(r[1]).upper() else "hi88"
+        row.append(InlineKeyboardButton(text=ORDER_UI_CACHE[ui_key], callback_data=f"site:{r[0]}"))
         if len(row) == 2:
             buttons.append(row)
             row = []
@@ -1907,6 +1908,7 @@ open_beni_system = register_system_admin(
     admin_keyboard=admin_kb,
     sync_command_menus=sync_command_menus,
     clear_admin_command_menu=clear_admin_command_menu,
+    on_order_ui_update=lambda key, value: ORDER_UI_CACHE.__setitem__(key, value),
 )
 
 
