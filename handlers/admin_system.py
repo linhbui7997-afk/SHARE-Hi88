@@ -897,16 +897,54 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         item = next((x for x in items if x["id"] == key), None)
         if item:
             item["label"] = label
-            await menu_save(items, count)
-            await audit(message.from_user.id, "edit_main_menu_label", key, label)
-            await state.clear()
-            return await message.answer("✅ Đã đổi tên nút.", reply_markup=_kb([[("🧩 QUẢN LÝ MENU CHÍNH", "bs:menu")]]))
+            await state.update_data(menu_label=label)
+            await state.set_state(MenuForm.content)
+            return await message.answer("Gửi nội dung khi khách bấm nút này. Gửi dấu - để giữ nội dung hiện tại.")
         new_id = "custom_" + str(int(datetime.now().timestamp()))
         items.append({"id":new_id,"label":label,"enabled":True,"locked":False,"action":"custom","content":"Bạn đã chọn menu mới.","url":"","photo":""})
         await menu_save(items, count)
         await audit(message.from_user.id, "add_main_menu", new_id, label)
         await state.clear()
-        await message.answer("✅ Đã thêm menu mới. Có thể bấm ✏️ để sửa nội dung, ảnh hoặc link.", reply_markup=_kb([[("🧩 QUẢN LÝ MENU CHÍNH", "bs:menu")]]))
+        await message.answer("✅ Đã thêm menu mới. Bấm ✏️ để bổ sung nội dung, ảnh và link.", reply_markup=_kb([[("🧩 QUẢN LÝ MENU CHÍNH", "bs:menu")]]))
+
+    @dp.message(MenuForm.content)
+    async def menu_content_save(message: Message, state: FSMContext):
+        if message.from_user.id not in admin_ids: return
+        value = (message.text or "").strip()
+        data = await state.get_data()
+        await state.update_data(menu_content=None if value == "-" else value)
+        await state.set_state(MenuForm.url)
+        await message.answer("Gửi link https:// cho nút hoặc dấu - để bỏ link.")
+
+    @dp.message(MenuForm.url)
+    async def menu_url_save(message: Message, state: FSMContext):
+        if message.from_user.id not in admin_ids: return
+        value = (message.text or "").strip()
+        if value != "-" and value and not value.startswith(("https://", "http://")):
+            return await message.answer("Link phải bắt đầu bằng https:// hoặc http://, hoặc gửi -.")
+        await state.update_data(menu_url="" if value == "-" else value)
+        await state.set_state(MenuForm.photo)
+        await message.answer("Gửi ảnh muốn gắn với menu, hoặc dấu - để bỏ qua.")
+
+    @dp.message(MenuForm.photo)
+    async def menu_photo_save(message: Message, state: FSMContext):
+        if message.from_user.id not in admin_ids: return
+        data = await state.get_data()
+        key = data.get("menu_id")
+        items, count, _ = await menu_load()
+        item = next((x for x in items if x["id"] == key), None)
+        if not item:
+            await state.clear()
+            return await message.answer("Menu không còn tồn tại.")
+        if data.get("menu_content") is not None: item["content"] = data["menu_content"]
+        item["url"] = data.get("menu_url", item.get("url", ""))
+        if message.photo: item["photo"] = message.photo[-1].file_id
+        elif (message.text or "").strip() == "-": pass
+        else: return await message.answer("Vui lòng gửi ảnh hoặc dấu -.")
+        await menu_save(items, count)
+        await audit(message.from_user.id, "edit_main_menu", key, item["label"])
+        await state.clear()
+        await message.answer("✅ Đã lưu tên, nội dung, ảnh và link nút.", reply_markup=_kb([[("🧩 QUẢN LÝ MENU CHÍNH", "bs:menu")]]))
 
     @dp.callback_query(F.data == "bs:menu:rows")
     async def bs_menu_rows_prompt(call: CallbackQuery, state: FSMContext):
