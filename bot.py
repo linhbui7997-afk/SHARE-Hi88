@@ -212,6 +212,20 @@ def menu_label(menu_id):
     return item.get("label", "") if item else ""
 
 
+async def send_menu_extras(message, menu_id):
+    item = menu_item(menu_id)
+    if not item: return
+    body = (item.get("content") or "").strip()
+    photo = item.get("photo") or ""
+    url = item.get("url") or ""
+    if not body and not photo and not url: return
+    markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔗 MỞ LIÊN KẾT", url=url)]]) if url else None
+    if photo:
+        await message.answer_photo(photo, caption=body or None, reply_markup=markup)
+    elif body:
+        await message.answer(body, reply_markup=markup)
+
+
 def main_kb(user_id=None):
     visible = [item for item in MAIN_MENU_CACHE if item.get("enabled", True) and item.get("id") != "admin"]
     if user_id is not None and is_admin(user_id):
@@ -419,6 +433,7 @@ async def help_command(message: Message):
 async def reply_buy(message: Message, state: FSMContext):
     if (message.text or "").strip() != ORDER_UI_CACHE["hot"]: return
     await state.clear()
+    await send_menu_extras(message, "hot")
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("SELECT id,name,product_code,price FROM sites WHERE active=1 ORDER BY id")
         sites = await cur.fetchall()
@@ -450,6 +465,7 @@ async def reply_buy(message: Message, state: FSMContext):
 
 @dp.message(lambda message: message.text == menu_label("deposit"))
 async def reply_deposit(message: Message, state: FSMContext):
+    await send_menu_extras(message, "deposit")
     await state.set_state(DepositForm.amount)
     await message.answer(
         "💳 <b>NẠP TIỀN VÀO VÍ</b>\n\n"
@@ -462,6 +478,7 @@ async def reply_deposit(message: Message, state: FSMContext):
 
 @dp.message(lambda message: message.text == menu_label("wallet"))
 async def reply_account(message: Message):
+    await send_menu_extras(message, "wallet")
     row = await get_user(message.from_user.id)
     await message.answer(
         "👛 <b>SỐ DƯ TÀI KHOẢN</b>\n\n"
@@ -474,6 +491,7 @@ async def reply_account(message: Message):
 
 @dp.message(lambda message: message.text == menu_label("history"))
 async def reply_history(message: Message):
+    await send_menu_extras(message, "history")
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("SELECT code,amount,status,created_at FROM deposits WHERE user_id=? ORDER BY id DESC LIMIT 10", (message.from_user.id,))
         deposits = await cur.fetchall()
@@ -488,6 +506,7 @@ async def reply_history(message: Message):
 
 @dp.message(lambda message: message.text == menu_label("support"))
 async def reply_support(message: Message):
+    await send_menu_extras(message, "support")
     url = os.getenv("SUPPORT_URL", "https://t.me/nilatao")
     await message.answer("📞 <b>LIÊN HỆ HỖ TRỢ</b>\nNhấn nút bên dưới để liên hệ quản trị viên.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📩 NHẮN ADMIN", url=url)]]))
@@ -495,6 +514,7 @@ async def reply_support(message: Message):
 
 @dp.message(lambda message: message.text == menu_label("guide"))
 async def reply_guide(message: Message):
+    await send_menu_extras(message, "guide")
     await message.answer(
         "📖 <b>HƯỚNG DẪN MUA HÀNG</b>\n\n"
         "1️⃣ Chọn 🎁 ĐẶT ĐƠN KM SHARE.\n"
@@ -511,6 +531,7 @@ async def reply_guide(message: Message):
 
 @dp.message(lambda message: message.text == menu_label("admin"))
 async def reply_admin(message: Message):
+    await send_menu_extras(message, "admin")
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ Bạn không có quyền truy cập.")
     await message.answer("🛠 <b>BẢNG QUẢN TRỊ SHARE-Hi88</b>\nChọn chức năng:", reply_markup=admin_kb())
