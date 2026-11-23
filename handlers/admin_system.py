@@ -936,6 +936,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not item:
             await state.clear()
             return await message.answer("Menu không còn tồn tại.")
+        item["label"] = data.get("menu_label", item["label"])
         if data.get("menu_content") is not None: item["content"] = data["menu_content"]
         item["url"] = data.get("menu_url", item.get("url", ""))
         if message.photo: item["photo"] = message.photo[-1].file_id
@@ -987,6 +988,22 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await state.clear()
         await message.answer("✅ Đã cập nhật lời chào /start.", reply_markup=_kb([[("🧩 QUẢN LÝ MENU CHÍNH", "bs:menu")]]))
 
+
+
+    @dp.message(F.text)
+    async def custom_main_menu_handler(message: Message):
+        if not message.text: return
+        items, _, _ = await menu_load()
+        item = next((x for x in items if x.get("label") == message.text and x.get("action") == "custom" and x.get("enabled", True)), None)
+        if not item: return
+        body = item.get("content") or item.get("label", "")
+        markup = _kb([[("🔗 MỞ LIÊN KẾT", "noop")]]) if False else None
+        if item.get("url"):
+            markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔗 MỞ LIÊN KẾT", url=item["url"])]])
+        if item.get("photo"):
+            await message.answer_photo(item["photo"], caption=body, reply_markup=markup)
+        else:
+            await message.answer(body, reply_markup=markup)
 
     ORDER_UI_ITEMS = {
         "hot": ("[hot] • Nút ĐẶT KM SHARE", "🎁 ĐẶT ĐƠN KM SHARE"),
