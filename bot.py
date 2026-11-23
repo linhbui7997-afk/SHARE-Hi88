@@ -44,7 +44,7 @@ SEPAY_QR_TEMPLATE = os.getenv("SEPAY_QR_TEMPLATE", "compact2")
 ORDER_ANNOUNCE_CHANNEL = os.getenv("ORDER_ANNOUNCE_CHANNEL", "@sharegame1")
 SEPAY_PREFIX = re.sub(r"[^A-Z0-9]", "", os.getenv("SEPAY_CODE_PREFIX", "SH").upper())[:5] or "SH"
 TZ = ZoneInfo("Asia/Ho_Chi_Minh")
-ORDER_UI_DEFAULTS = {"hot":"🎁 ĐẶT ĐƠN KM SHARE","hi88":"🎁 SHARE Hi88","qq88":"🎁 SHARE QQ88","hi88_name":"👤 Vui lòng nhập tên tài khoản Hi88:","hi88_stk":"🏦 Nhập đúng 4 số cuối STK ngân hàng đã liên kết với tài khoản Hi88:","qq88_name":"👤 Vui lòng nhập tên tài khoản QQ88:","qq88_stk":"🏦 Nhập đúng 6 số cuối STK ngân hàng đã liên kết với tài khoản QQ88:","confirm":"✅ XÁC NHẬN THANH TOÁN","complete":"🎉 <b>ĐẶT ĐƠN THÀNH CÔNG</b>\\n\\n━━━━━━━━━━━━━━━━━━\\n✅ Thanh toán đơn hàng thành công!\\n\\n🎁 Sản phẩm: <b>SHARE {site_name}</b>\\n🎟 Gói khuyến mãi: <b>{product_code} điểm</b>\\n🧾 Mã đơn: <code>{order_id}</code>\\n👤 Tài khoản: <code>{account_name}</code>\\n🏦 {digits} số cuối STK: <code>{stk}</code>\\n💰 Đã thanh toán: <b>{price}</b>\\n⏳ Trạng thái: <b>{status}</b>\\n━━━━━━━━━━━━━━━━━━\\n\\n📢 Đơn hàng đã được gửi đến quản trị viên. Vui lòng chờ thông báo khi đơn được xử lý hoàn tất."}
+ORDER_UI_DEFAULTS = {"hot":"🎁 ĐẶT ĐƠN KM SHARE","hi88":"🎁 SHARE Hi88","qq88":"🎁 SHARE QQ88","hi88_name":"👤 Vui lòng nhập tên tài khoản Hi88:","hi88_stk":"🏦 Nhập đúng 4 số cuối STK ngân hàng đã liên kết với tài khoản Hi88:","qq88_name":"👤 Vui lòng nhập tên tài khoản QQ88:","qq88_stk":"🏦 Nhập đúng 6 số cuối STK ngân hàng đã liên kết với tài khoản QQ88:","confirm":"✅ XÁC NHẬN THANH TOÁN","complete":"🎉 <b>ĐẶT ĐƠN THÀNH CÔNG</b>\n\n━━━━━━━━━━━━━━━━━━\n✅ Thanh toán đơn hàng thành công!\n\n🎁 Sản phẩm: <b>SHARE {site_name}</b>\n🎟 Gói khuyến mãi: <b>{product_code} điểm</b>\n🧾 Mã đơn: <code>{order_id}</code>\n👤 Tài khoản: <code>{account_name}</code>\n🏦 {digits} số cuối STK: <code>{stk}</code>\n💰 Đã thanh toán: <b>{price}</b>\n⏳ Trạng thái: <b>{status}</b>\n━━━━━━━━━━━━━━━━━━\n\n📢 Đơn hàng đã được gửi đến quản trị viên. Vui lòng chờ thông báo khi đơn được xử lý hoàn tất."}
 ORDER_UI_CACHE = dict(ORDER_UI_DEFAULTS)
 
 if not BOT_TOKEN:
@@ -612,7 +612,7 @@ async def order_begin(call: CallbackQuery, state: FSMContext):
     await state.set_state(OrderForm.account_name)
     await call.message.edit_text(
         f"📝 <b>THÔNG TIN ĐẶT HÀNG • {esc(data['site_name'])}</b>\n\n"
-        f"{esc(ORDER_UI_CACHE['qq88_name' if 'QQ88' in data['site_name'].upper() else 'hi88_name'])}\\n\\n"
+        f"{esc(ORDER_UI_CACHE['qq88_name' if 'QQ88' in data['site_name'].upper() else 'hi88_name'])}\n\n"
         "📌 Ví dụ: <code>nguyenvana</code>\n"
         "━━━━━━━━━━━━━━━━━━",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -632,7 +632,7 @@ async def order_account(message: Message, state: FSMContext):
     await state.set_state(OrderForm.stk_last4)
     data = await state.get_data()
     await message.answer(
-        f"{esc(ORDER_UI_CACHE['qq88_stk' if 'QQ88' in data.get('site_name','').upper() else 'hi88_stk'])}\\n"
+        f"{esc(ORDER_UI_CACHE['qq88_stk' if 'QQ88' in data.get('site_name','').upper() else 'hi88_stk'])}\n"
         f"<i>Hi88 yêu cầu 4 số cuối • QQ88 yêu cầu 6 số cuối.</i>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="↩️ QUAY LẠI BƯỚC 2", callback_data="order_back_account")],
@@ -940,8 +940,8 @@ async def admin_order_processing(call: CallbackQuery):
     try:
         await bot.send_message(
             uid,
-            "🔄 <b>ĐƠN HÀNG ĐANG ĐƯỢC XỬ LÝ</b>\\n\\n"
-            f"Mã đơn: <code>DH{oid:08d}</code>\\n"
+            "🔄 <b>ĐƠN HÀNG ĐANG ĐƯỢC XỬ LÝ</b>\n\n"
+            f"Mã đơn: <code>DH{oid:08d}</code>\n"
             "Quản trị viên đã tiếp nhận đơn. Vui lòng chờ thông báo hoàn tất."
         )
     except Exception:
@@ -1107,9 +1107,9 @@ async def admin_order_refund(call: CallbackQuery):
         await db.commit()
     try:
         await bot.send_message(uid,
-            "↩️ <b>ĐƠN HÀNG ĐÃ ĐƯỢC HOÀN TIỀN</b>\\n\\n"
-            f"Mã đơn: <code>DH{oid:08d}</code>\\n"
-            f"Số tiền hoàn: <b>{money(price)}</b>\\n"
+            "↩️ <b>ĐƠN HÀNG ĐÃ ĐƯỢC HOÀN TIỀN</b>\n\n"
+            f"Mã đơn: <code>DH{oid:08d}</code>\n"
+            f"Số tiền hoàn: <b>{money(price)}</b>\n"
             "💰 Tiền đã được cộng lại vào ví SHARE-Hi88 của bạn."
         )
     except Exception:
@@ -1143,9 +1143,9 @@ async def admin_order_abuse(call: CallbackQuery):
         await db.commit()
     try:
         await bot.send_message(uid,
-            "❌ <b>ĐƠN HÀNG BỊ TỪ CHỐI</b>\\n\\n"
-            f"Mã đơn: <code>DH{oid:08d}</code>\\n"
-            "Lý do: Tài khoản bị xác định có dấu hiệu lạm dụng khuyến mãi.\\n"
+            "❌ <b>ĐƠN HÀNG BỊ TỪ CHỐI</b>\n\n"
+            f"Mã đơn: <code>DH{oid:08d}</code>\n"
+            "Lý do: Tài khoản bị xác định có dấu hiệu lạm dụng khuyến mãi.\n"
             "Theo quy định chương trình, đơn này không được hoàn tiền."
         )
     except Exception:
@@ -1237,10 +1237,10 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
             ])
         buttons.append([InlineKeyboardButton(text="↩️ VỀ QUẢN TRỊ", callback_data="admin_home")])
         await call.message.edit_text(
-            "👑 <b>QUẢN TRỊ KM SHARE HI88</b>\\n\\n"
-            "🛍️ <b>QUẢN LÝ SẢN PHẨM – GIÁ</b>\\n\\n"
-            "Chọn site để chỉnh mã sản phẩm, giá bán và mô tả.\\n"
-            "⚠️ Khi lưu nội dung mới, nội dung cũ của trường đó sẽ được thay thế hoàn toàn.\\n"
+            "👑 <b>QUẢN TRỊ KM SHARE HI88</b>\n\n"
+            "🛍️ <b>QUẢN LÝ SẢN PHẨM – GIÁ</b>\n\n"
+            "Chọn site để chỉnh mã sản phẩm, giá bán và mô tả.\n"
+            "⚠️ Khi lưu nội dung mới, nội dung cũ của trường đó sẽ được thay thế hoàn toàn.\n"
             "Mô tả nhập dấu <code>-</code> nếu muốn xóa mô tả hiện tại.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
@@ -1483,11 +1483,11 @@ async def site_price_start(call: CallbackQuery, state: FSMContext):
     await state.set_state(SitePriceForm.code)
     await state.update_data(site_id=site_id)
     await call.message.edit_text(
-        f"👑 <b>CHỈNH SỬA SITE {esc(row[0])}</b>\\n\\n"
-        f"🔖 Mã hiện tại: <code>{esc(row[1])}</code>\\n"
-        f"💰 Giá hiện tại: <b>{money(row[2])}</b>\\n"
-        f"📝 Mô tả hiện tại: {esc(row[3] or 'Chưa có')}\\n\\n"
-        "BƯỚC 1/3 — Nhập mã sản phẩm mới.\\n"
+        f"👑 <b>CHỈNH SỬA SITE {esc(row[0])}</b>\n\n"
+        f"🔖 Mã hiện tại: <code>{esc(row[1])}</code>\n"
+        f"💰 Giá hiện tại: <b>{money(row[2])}</b>\n"
+        f"📝 Mô tả hiện tại: {esc(row[3] or 'Chưa có')}\n\n"
+        "BƯỚC 1/3 — Nhập mã sản phẩm mới.\n"
         "⚠️ Mã mới sẽ thay thế mã cũ.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🗑 XÓA SITE NÀY", callback_data=f"site_delete:{site_id}")],
@@ -1546,10 +1546,10 @@ async def site_price_description(message: Message, state: FSMContext):
         await db.commit()
     await state.clear()
     await message.answer(
-        f"✅ <b>ĐÃ CẬP NHẬT SITE</b>\\n\\n"
-        f"🔖 Mã sản phẩm mới: <code>{esc(data['product_code'])}</code>\\n"
-        f"💰 Giá mới: <b>{money(data['site_price'])}</b>\\n"
-        f"📝 Mô tả: {esc(description or 'Đã xóa')}\\n\\n"
+        f"✅ <b>ĐÃ CẬP NHẬT SITE</b>\n\n"
+        f"🔖 Mã sản phẩm mới: <code>{esc(data['product_code'])}</code>\n"
+        f"💰 Giá mới: <b>{money(data['site_price'])}</b>\n"
+        f"📝 Mô tả: {esc(description or 'Đã xóa')}\n\n"
         "Nội dung mới đã thay thế nội dung cũ. Các đơn hàng đã tạo trước đó không bị thay đổi.",
         reply_markup=admin_kb()
     )
@@ -1577,7 +1577,7 @@ async def site_delete_prompt(call: CallbackQuery):
         f"Site {site[0]} chưa có đơn lịch sử. Xác nhận sẽ xóa site khỏi danh sách quản trị và mua hàng."
     )
     await call.message.edit_text(
-        f"⚠️ <b>XÁC NHẬN XÓA SITE {esc(site[0])}?</b>\\n\\n{note}",
+        f"⚠️ <b>XÁC NHẬN XÓA SITE {esc(site[0])}?</b>\n\n{note}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ XÁC NHẬN XÓA", callback_data=f"site_delete_confirm:{site_id}")],
             [InlineKeyboardButton(text="❌ HỦY", callback_data="adm_sites")]
@@ -1658,8 +1658,8 @@ async def broadcast_start(call: CallbackQuery, state: FSMContext):
     await state.clear()
     await state.set_state(BroadcastForm.content)
     await call.message.edit_text(
-        "📢 <b>THÔNG BÁO TOÀN THÀNH VIÊN</b>\\n\\n"
-        "Gửi nội dung hoặc media (ảnh/video/tệp kèm chú thích). Bot sẽ phát tới tất cả ID đã từng nhấn /start.\\n"
+        "📢 <b>THÔNG BÁO TOÀN THÀNH VIÊN</b>\n\n"
+        "Gửi nội dung hoặc media (ảnh/video/tệp kèm chú thích). Bot sẽ phát tới tất cả ID đã từng nhấn /start.\n"
         "Tin nhắn sẽ được sao chép, không hiển thị người gửi gốc.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="↩️ QUAY LẠI QTV", callback_data="admin_home")]
@@ -1684,9 +1684,9 @@ async def broadcast_content(message: Message, state: FSMContext):
     except Exception:
         pass
     await message.answer(
-        "🔎 <b>XÁC NHẬN PHÁT THÔNG BÁO</b>\\n\\n"
-        f"👥 Số thành viên trong danh sách: <b>{total:,}</b>\\n"
-        "📌 Đối tượng: Tất cả thành viên từng nhấn /start\\n\\n"
+        "🔎 <b>XÁC NHẬN PHÁT THÔNG BÁO</b>\n\n"
+        f"👥 Số thành viên trong danh sách: <b>{total:,}</b>\n"
+        "📌 Đối tượng: Tất cả thành viên từng nhấn /start\n\n"
         "Bạn có chắc chắn muốn gửi thông báo này?",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ XÁC NHẬN GỬI TOÀN BỘ", callback_data="broadcast_confirm")],
@@ -1704,7 +1704,7 @@ async def broadcast_confirm(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     await state.clear()
     await call.answer("Bắt đầu gửi thông báo.")
-    await call.message.edit_text("📢 Đang phát thông báo...\\nVui lòng chờ báo cáo kết quả.")
+    await call.message.edit_text("📢 Đang phát thông báo...\nVui lòng chờ báo cáo kết quả.")
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("SELECT user_id FROM users ORDER BY user_id")
         user_ids = [int(row[0]) for row in await cur.fetchall()]
@@ -1732,10 +1732,10 @@ async def broadcast_confirm(call: CallbackQuery, state: FSMContext):
         )
         await db.commit()
     await call.message.edit_text(
-        "✅ <b>ĐÃ HOÀN TẤT PHÁT THÔNG BÁO</b>\\n\\n"
-        f"👥 Tổng thành viên: <b>{len(user_ids):,}</b>\\n"
-        f"✅ Gửi thành công: <b>{sent:,}</b>\\n"
-        f"❌ Gửi thất bại: <b>{failed:,}</b>\\n"
+        "✅ <b>ĐÃ HOÀN TẤT PHÁT THÔNG BÁO</b>\n\n"
+        f"👥 Tổng thành viên: <b>{len(user_ids):,}</b>\n"
+        f"✅ Gửi thành công: <b>{sent:,}</b>\n"
+        f"❌ Gửi thất bại: <b>{failed:,}</b>\n"
         f"🚫 Có dấu hiệu đã chặn bot/ngừng hoạt động: <b>{blocked:,}</b>",
         reply_markup=admin_kb()
     )
