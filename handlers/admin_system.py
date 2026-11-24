@@ -848,7 +848,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not await allowed(call): return
         await state.clear()
         await state.set_state(MenuForm.label)
-        await safe_edit(call.message, "➕ <b>THÊM MENU MỚI</b>\\n\\nGửi tên nút menu mới (tối đa 64 ký tự).\\nGửi /cancel để hủy.")
+        await safe_edit(call.message, "➕ <b>THÊM MENU MỚI</b>\n\nGửi tên nút menu mới (tối đa 64 ký tự).")
         await call.answer()
 
     @dp.callback_query(F.data.startswith("bs:menu:toggle:"))
