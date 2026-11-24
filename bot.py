@@ -219,7 +219,7 @@ async def send_menu_extras(message, menu_id):
     photo = item.get("photo") or ""
     url = item.get("url") or ""
     if not body and not photo and not url: return
-    markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔗 MỞ LIÊN KẾT", url=url)]]) if url else None
+    markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=item.get("button_text") or "🔗 MỞ LIÊN KẾT", url=url)]]) if url else None
     if photo:
         await message.answer_photo(photo, caption=body or None, reply_markup=markup)
     elif body:
