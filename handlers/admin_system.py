@@ -1137,7 +1137,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         body = item.get("content") or item.get("label", "")
         markup = _kb([[("🔗 MỞ LIÊN KẾT", "noop")]]) if False else None
         if item.get("url"):
-            markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔗 MỞ LIÊN KẾT", url=item["url"])]])
+            markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=item.get("button_text") or "🔗 MỞ LIÊN KẾT", url=item["url"])]])
         if item.get("photo"):
             await message.answer_photo(item["photo"], caption=body, reply_markup=markup)
         else:
