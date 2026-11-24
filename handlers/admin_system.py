@@ -35,6 +35,7 @@ class MenuForm(StatesGroup):
     label = State()
     content = State()
     url = State()
+    button_text = State()
     photo = State()
     rows = State()
     greeting = State()
@@ -842,6 +843,14 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await state.clear()
         await menu_panel(call, state)
 
+    @dp.callback_query(F.data == "bs:menu:add")
+    async def bs_menu_add(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        await state.clear()
+        await state.set_state(MenuForm.label)
+        await safe_edit(call.message, "➕ <b>THÊM MENU MỚI</b>\\n\\nGửi tên nút menu mới (tối đa 64 ký tự).\\nGửi /cancel để hủy.")
+        await call.answer()
+
     @dp.callback_query(F.data.startswith("bs:menu:toggle:"))
     async def bs_menu_toggle(call: CallbackQuery, state: FSMContext):
         if not await allowed(call): return
@@ -908,15 +917,17 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         item = next((x for x in items if x["id"] == key), None)
         if item:
             item["label"] = label
+            await menu_save(items, count)
             await state.update_data(menu_label=label)
-            await state.set_state(MenuForm.content)
-            return await message.answer("Gửi nội dung khi khách bấm nút này. Gửi dấu - để giữ nội dung hiện tại.")
-        new_id = "custom_" + str(int(datetime.now().timestamp()))
-        items.append({"id":new_id,"label":label,"enabled":True,"locked":False,"action":"custom","content":"Bạn đã chọn menu mới.","url":"","photo":""})
-        await menu_save(items, count)
-        await audit(message.from_user.id, "add_main_menu", new_id, label)
-        await state.clear()
-        await message.answer("✅ Đã thêm menu mới. Bấm ✏️ để bổ sung nội dung, ảnh và link.", reply_markup=_kb([[("🧩 QUẢN LÝ MENU CHÍNH", "bs:menu")]]))
+        else:
+            new_id = "custom_" + str(int(datetime.now().timestamp() * 1000))
+            item = {"id":new_id,"label":label,"enabled":True,"locked":False,"action":"custom","content":"Bạn đã chọn menu mới.","url":"","button_text":"🔗 MỞ LIÊN KẾT","photo":""}
+            items.append(item)
+            await menu_save(items, count)
+            await state.update_data(menu_id=new_id, menu_label=label)
+            await audit(message.from_user.id, "add_main_menu", new_id, label)
+        await state.set_state(MenuForm.content)
+        await message.answer("Gửi nội dung khi khách bấm nút này. Gửi dấu - để giữ nội dung mặc định.")
 
     @dp.message(MenuForm.content)
     async def menu_content_save(message: Message, state: FSMContext):
@@ -934,8 +945,19 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if value != "-" and value and not value.startswith(("https://", "http://")):
             return await message.answer("Link phải bắt đầu bằng https:// hoặc http://, hoặc gửi -.")
         await state.update_data(menu_url="" if value == "-" else value)
+        await state.set_state(MenuForm.button_text)
+        await message.answer("Gửi tên nút liên kết (ví dụ: 🔗 MỞ LIÊN KẾT), hoặc gửi - để giữ mặc định.")
+
+    @dp.message(MenuForm.button_text)
+    async def menu_button_text_save(message: Message, state: FSMContext):
+        if message.from_user.id not in admin_ids: return
+        value = (message.text or "").strip()
+        if value != "-" and (not value or len(value) > 64):
+            return await message.answer("Tên nút liên kết phải từ 1 đến 64 ký tự, hoặc gửi - để giữ mặc định.")
+        await state.update_data(menu_button_text=None if value == "-" else value)
         await state.set_state(MenuForm.photo)
-        await message.answer("Gửi ảnh muốn gắn với menu, hoặc dấu - để bỏ qua.")
+        await message.answer("Gửi ảnh muốn gắn với menu, gửi - để giữ ảnh hiện tại hoặc /remove để xóa ảnh.")
+
 
     @dp.message(MenuForm.photo)
     async def menu_photo_save(message: Message, state: FSMContext):
@@ -950,9 +972,12 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         item["label"] = data.get("menu_label", item["label"])
         if data.get("menu_content") is not None: item["content"] = data["menu_content"]
         item["url"] = data.get("menu_url", item.get("url", ""))
+        if data.get("menu_button_text") is not None:
+            item["button_text"] = data["menu_button_text"]
         if message.photo: item["photo"] = message.photo[-1].file_id
+        elif (message.text or "").strip() == "/remove": item["photo"] = ""
         elif (message.text or "").strip() == "-": pass
-        else: return await message.answer("Vui lòng gửi ảnh hoặc dấu -.")
+        else: return await message.answer("Vui lòng gửi ảnh, dấu - để giữ ảnh, hoặc /remove để xóa ảnh.")
         await menu_save(items, count)
         await audit(message.from_user.id, "edit_main_menu", key, item["label"])
         await state.clear()
