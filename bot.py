@@ -335,7 +335,7 @@ async def home_text(user):
     username = f"@{esc(user.username)}" if user.username else esc(user.first_name or "bạn")
     greeting = START_GREETING_CACHE.replace("{username}", username).replace("{id}", str(user.id))
     return (
-        f"{greeting}\\n"
+        f"{greeting}\n"
         f"📆 {date_text}   ⏰ {time_text} (GMT+7)\n"
         f"💬 Xin chào, {username}\n"
         f"⊕ Số Dư Ví : <b>{money(wallet)}</b>\n"
