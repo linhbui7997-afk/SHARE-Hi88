@@ -252,7 +252,7 @@ def admin_kb():
          InlineKeyboardButton(text="💳 YÊU CẦU NẠP TIỀN", callback_data="adm_deposits")],
         [InlineKeyboardButton(text="💰 ĐIỀU CHỈNH SỐ DƯ VÍ", callback_data="adm_wallet"),
          InlineKeyboardButton(text="🏦 TÀI KHOẢN NHẬN TIỀN", callback_data="adm_stks")],
-        [InlineKeyboardButton(text="➕ QUẢN LÝ SITE / SẢN PHẨM – GIÁ", callback_data="adm_sites")]
+        [InlineKeyboardButton(text="➕ QUẢN LÝ SITE / SẢN PHẨM – GIÁ", callback_data="adm_sites")],
         [InlineKeyboardButton(text="📢 THÔNG BÁO TOÀN THÀNH VIÊN", callback_data="broadcast_start")],
         [InlineKeyboardButton(text="📨 THÔNG BÁO ID RIÊNG", callback_data="adm_notify"),
          InlineKeyboardButton(text="📊 BÁO CÁO", callback_data="adm_report")],
