@@ -810,6 +810,25 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             greeting = await cur.fetchone()
         try: items = json.loads(row[0]) if row else [dict(x) for x in MENU_DEFAULTS]
         except Exception: items = [dict(x) for x in MENU_DEFAULTS]
+        # Every menu item has a permanent internal code. Existing IDs are retained
+        # so previously stored callbacks and customer menu actions remain compatible.
+        changed = False
+        used_codes = set()
+        for index, item in enumerate(items, 1):
+            if not item.get("id"):
+                item["id"] = f"menu_{index}"
+                changed = True
+            code = str(item.get("code") or item["id"]).strip()
+            if not code or code in used_codes:
+                code = str(item["id"])
+            if item.get("code") != code:
+                item["code"] = code
+                changed = True
+            used_codes.add(code)
+        if changed:
+            async with aiosqlite.connect(db_path) as db:
+                await db.execute("INSERT INTO settings(key,value) VALUES('main_menu_config',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (json.dumps(items, ensure_ascii=False),))
+                await db.commit()
         try: count = max(1, min(4, int(row_count[0]))) if row_count else 2
         except Exception: count = 2
         return items, count, greeting[0] if greeting else "Xin chào! Chào mừng bạn đến với SHARE-Hi88."
@@ -826,7 +845,8 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         rows = []
         for i, item in enumerate(items):
             mark = "🔒" if item.get("locked") else ("✅" if item.get("enabled", True) else "⬜")
-            controls = [(f"{mark} {item['label']}", f"bs:menu:toggle:{item['id']}"), ("✏️", f"bs:menu:edit:{item['id']}")]
+            code = esc(str(item.get("code") or item["id"]))
+            controls = [(f"{mark} [{code}] {item['label']}", f"bs:menu:toggle:{item['id']}"), ("✏️", f"bs:menu:edit:{item['id']}")]
             if i > 0: controls.append(("⬆️", f"bs:menu:up:{item['id']}"))
             if i < len(items)-1: controls.append(("⬇️", f"bs:menu:down:{item['id']}"))
             if item.get("action") == "custom": controls.append(("🗑", f"bs:menu:delete:{item['id']}"))
@@ -834,7 +854,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         rows += [[(f"🔢 BỐ CỤC HÀNG: {count}", "bs:menu:rows")],
                  [("👋 LỜI CHÀO /START", "bs:menu:greeting"), ("➕ THÊM MENU", "bs:menu:add")],
                  [("↩️ BENI SYSTEM", "bs:home")]]
-        body = "✅ đang hiện · ⬜ đang ẩn · 🔒 cố định\n⬆️⬇️ đổi thứ tự · Bấm tên để bật/tắt (🔒 không tắt)\n✏️ sửa tên / nội dung / ảnh / nút bấm\n🗑 xóa menu tự thêm · ➕ thêm menu mới"
+        body = "✅ đang hiện · ⬜ đang ẩn · 🔒 cố định\n⬆️⬇️ đổi thứ tự · Bấm tên để bật/tắt (🔒 không tắt)\n✏️ sửa tên / nội dung / ảnh / nút bấm\n🏷 Mỗi nút có mã [code] riêng, mã giữ nguyên khi đổi tên.\n🗑 xóa menu tự thêm · ➕ thêm menu mới"
         await show(call, "🧩 <b>QUẢN LÝ MENU CHÍNH</b>", body, rows)
 
     @dp.callback_query(F.data == "bs:menu")
@@ -903,7 +923,8 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await state.clear()
         await state.update_data(menu_id=key)
         await state.set_state(MenuForm.label)
-        await safe_edit(call.message, "✏️ <b>ĐỔI TÊN MENU</b>\nTên hiện tại: " + esc(item["label"]) + "\nGửi tên nút mới:")
+        code = esc(str(item.get("code") or item["id"]))
+        await safe_edit(call.message, "✏️ <b>CHỈNH SỬA MENU</b>\nMã nút: <code>[" + code + "]</code>\nTên hiện tại: " + esc(item["label"]) + "\nGửi tên nút mới (hoặc giữ nguyên bằng cách gửi đúng tên hiện tại):")
         await call.answer()
 
     @dp.message(MenuForm.label)
@@ -921,7 +942,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             await state.update_data(menu_label=label)
         else:
             new_id = "custom_" + str(int(datetime.now().timestamp() * 1000))
-            item = {"id":new_id,"label":label,"enabled":True,"locked":False,"action":"custom","content":"Bạn đã chọn menu mới.","url":"","button_text":"🔗 MỞ LIÊN KẾT","photo":""}
+            item = {"id":new_id,"code":new_id,"label":label,"enabled":True,"locked":False,"action":"custom","content":"Bạn đã chọn menu mới.","url":"","button_text":"🔗 MỞ LIÊN KẾT","photo":""}
             items.append(item)
             await menu_save(items, count)
             await state.update_data(menu_id=new_id, menu_label=label)
