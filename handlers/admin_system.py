@@ -29,6 +29,7 @@ class BotCommandForm(StatesGroup):
     value = State()
 
 class OrderUiForm(StatesGroup):
+    label = State()
     value = State()
 
 class MenuForm(StatesGroup):
@@ -1060,6 +1061,21 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         "complete": ("[complete] • Nội dung hoàn tất đơn", "🎉 <b>ĐẶT ĐƠN THÀNH CÔNG</b>\n\n🎁 Sản phẩm: <b>SHARE {site_name}</b>\n🎟 Gói: <b>{product_code} điểm</b>\n🧾 Mã đơn: <code>{order_id}</code>\n👤 Tài khoản: <code>{account_name}</code>\n🏦 {digits} số cuối STK: <code>{stk}</code>\n💰 Đã thanh toán: <b>{price}</b>\n⏳ Trạng thái: <b>{status}</b>")
     }
 
+    async def orderui_custom_items():
+        async with aiosqlite.connect(db_path) as db:
+            cur = await db.execute("SELECT value FROM settings WHERE key='order_ui_custom_items'")
+            row = await cur.fetchone()
+        try:
+            value = json.loads(row[0]) if row and row[0] else []
+            return value if isinstance(value, list) else []
+        except Exception:
+            return []
+
+    async def orderui_save_custom_items(items):
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute("INSERT INTO settings(key,value) VALUES('order_ui_custom_items',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (json.dumps(items, ensure_ascii=False),))
+            await db.commit()
+
     @dp.callback_query(F.data == "bs:orderui")
     async def bs_orderui(call: CallbackQuery, state: FSMContext):
         if not await allowed(call): return
@@ -1071,16 +1087,50 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
                 row = await cur.fetchone()
                 status = "📝 ĐÃ TÙY CHỈNH" if row else "⚪ MẶC ĐỊNH"
                 rows.append([(f"{label} · {status}", f"bs:orderui:item:{key}")])
-        rows.append([("↩️ QUAY LẠI BENI SYSTEM", "bs:home")])
+            custom_items = await orderui_custom_items()
+            for item in custom_items:
+                cur = await db.execute("SELECT value FROM settings WHERE key=?", ("order_ui_" + item["key"],))
+                saved = await cur.fetchone()
+                status = "📝 ĐÃ TÙY CHỈNH" if saved else "⚪ MẶC ĐỊNH"
+                rows.append([(f"[{item['key']}] • {item['label']} · {status}", f"bs:orderui:item:{item['key']}")])
+        rows += [[("➕ THÊM NÚT", "bs:orderui:add")],
+                 [("↩️ QUAY LẠI BENI SYSTEM", "bs:home")]]
         await show(call, "🧩 <b>QUẢN LÝ NÚT & NỘI DUNG ĐẶT ĐƠN</b>",
                    "Mã trong ngoặc vuông là mã nội bộ, không hiển thị cho khách. Chọn từng mục để sửa, xem trước và xác nhận lưu.", rows)
+
+    @dp.callback_query(F.data == "bs:orderui:add")
+    async def bs_orderui_add(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        await state.clear()
+        await state.set_state(OrderUiForm.label)
+        await safe_edit(call.message, "➕ <b>THÊM NÚT MỚI VÀO LUỒNG ĐẶT ĐƠN</b>\n\nGửi tên nút / tên bước mới. Hệ thống tự tạo mã nội bộ riêng. Mã không hiển thị cho khách.")
+        await call.answer()
+
+    @dp.message(OrderUiForm.label)
+    async def bs_orderui_add_label(message: Message, state: FSMContext):
+        if message.from_user.id not in admin_ids: return
+        label = (message.text or "").strip()
+        if not label or len(label) > 64:
+            return await message.answer("Tên nút phải từ 1 đến 64 ký tự. Hãy gửi lại.")
+        key = "custom_" + str(int(datetime.now().timestamp() * 1000))
+        items = await orderui_custom_items()
+        items.append({"key": key, "label": label, "default": label})
+        await orderui_save_custom_items(items)
+        await state.update_data(order_ui_key=key)
+        await state.set_state(OrderUiForm.value)
+        await message.answer(f"✅ Đã tạo mã nội bộ <code>[{key}]</code> cho <b>{esc(label)}</b>.\n\nGửi nội dung mặc định cho bước này để xem trước và xác nhận lưu.")
 
     @dp.callback_query(F.data.startswith("bs:orderui:item:"))
     async def bs_orderui_item(call: CallbackQuery, state: FSMContext):
         if not await allowed(call): return
         key = call.data.rsplit(":", 1)[-1]
-        if key not in ORDER_UI_ITEMS: return await call.answer("Mục không hợp lệ.", show_alert=True)
-        label, default = ORDER_UI_ITEMS[key]
+        custom = next((x for x in await orderui_custom_items() if x.get("key") == key), None)
+        if key in ORDER_UI_ITEMS:
+            label, default = ORDER_UI_ITEMS[key]
+        elif custom:
+            label, default = f"[{key}] • {custom['label']}", custom.get("default", custom["label"])
+        else:
+            return await call.answer("Mục không hợp lệ.", show_alert=True)
         async with aiosqlite.connect(db_path) as db:
             cur = await db.execute("SELECT value FROM settings WHERE key=?", ("order_ui_" + key,))
             row = await cur.fetchone()
@@ -1100,7 +1150,8 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         value = (message.text or "").strip()
         data = await state.get_data()
         key = data.get("order_ui_key")
-        if key not in ORDER_UI_ITEMS or not value or len(value) > 3500:
+        valid_custom = any(x.get("key") == key for x in await orderui_custom_items()) if key else False
+        if (key not in ORDER_UI_ITEMS and not valid_custom) or not value or len(value) > 3500:
             return await message.answer("Nội dung không hợp lệ hoặc vượt 3.500 ký tự. Hãy gửi lại.")
         await state.update_data(order_ui_value=value)
         await message.answer(
@@ -1113,13 +1164,14 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not await allowed(call): return
         data = await state.get_data()
         key, value = data.get("order_ui_key"), data.get("order_ui_value")
-        if key not in ORDER_UI_ITEMS or not value:
+        valid_custom = any(x.get("key") == key for x in await orderui_custom_items()) if key else False
+        if (key not in ORDER_UI_ITEMS and not valid_custom) or not value:
             return await call.answer("Không có nội dung chờ lưu.", show_alert=True)
         async with aiosqlite.connect(db_path) as db:
             await db.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", ("order_ui_" + key, value))
             await db.commit()
         await audit(call.from_user.id, "edit_order_ui", key, value[:500])
-        if on_order_ui_update:
+        if on_order_ui_update and key in ORDER_UI_ITEMS:
             on_order_ui_update(key, value)
         await state.clear()
         await safe_edit(call.message, "✅ Đã lưu nội dung cấu hình. Nội dung được lưu bền vững trong database.", reply_markup=_kb([[("🧩 QUẢN LÝ NÚT ĐẶT ĐƠN", "bs:orderui")], [("↩️ BENI SYSTEM", "bs:home")]]))
@@ -1130,8 +1182,10 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not await allowed(call): return
         await state.clear()
         key = call.data.rsplit(":", 1)[-1]
-        if key not in ORDER_UI_ITEMS: return await call.answer("Mục không hợp lệ.", show_alert=True)
-        await safe_edit(call.message, f"⚠️ <b>KHÔI PHỤC MẶC ĐỊNH?</b>\n\n{esc(ORDER_UI_ITEMS[key][0])}", reply_markup=_kb([[("✅ XÁC NHẬN", f"bs:orderui:resetconfirm:{key}")], [("❌ HỦY", f"bs:orderui:item:{key}")]]))
+        custom = next((x for x in await orderui_custom_items() if x.get("key") == key), None)
+        if key not in ORDER_UI_ITEMS and not custom: return await call.answer("Mục không hợp lệ.", show_alert=True)
+        label = ORDER_UI_ITEMS[key][0] if key in ORDER_UI_ITEMS else f"[{key}] • {custom['label']}"
+        await safe_edit(call.message, f"⚠️ <b>KHÔI PHỤC MẶC ĐỊNH?</b>\n\n{esc(label)}", reply_markup=_kb([[("✅ XÁC NHẬN", f"bs:orderui:resetconfirm:{key}")], [("❌ HỦY", f"bs:orderui:item:{key}")]]))
         await call.answer()
 
     @dp.callback_query(F.data.startswith("bs:orderui:resetconfirm:"))
@@ -1139,13 +1193,15 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not await allowed(call): return
         await state.clear()
         key = call.data.rsplit(":", 1)[-1]
-        if key not in ORDER_UI_ITEMS: return await call.answer("Mục không hợp lệ.", show_alert=True)
+        custom = next((x for x in await orderui_custom_items() if x.get("key") == key), None)
+        if key not in ORDER_UI_ITEMS and not custom: return await call.answer("Mục không hợp lệ.", show_alert=True)
+        default = ORDER_UI_ITEMS[key][1] if key in ORDER_UI_ITEMS else custom.get("default", custom["label"])
         async with aiosqlite.connect(db_path) as db:
             await db.execute("DELETE FROM settings WHERE key=?", ("order_ui_" + key,))
             await db.commit()
         await audit(call.from_user.id, "reset_order_ui", key)
-        if on_order_ui_update:
-            on_order_ui_update(key, ORDER_UI_ITEMS[key][1])
+        if on_order_ui_update and key in ORDER_UI_ITEMS:
+            on_order_ui_update(key, default)
         await bs_orderui(call, state)
 
 
