@@ -12,6 +12,7 @@ from pathlib import Path
 
 import aiosqlite
 from aiogram import F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
@@ -46,6 +47,16 @@ def _kb(rows):
         [InlineKeyboardButton(text=label, callback_data=data) for label, data in row]
         for row in rows
     ])
+
+
+async def safe_edit(message, text, *, reply_markup=None):
+    """Edit an admin panel message without logging harmless no-op edits."""
+    try:
+        return await message.edit_text(text, reply_markup=reply_markup)
+    except TelegramBadRequest as exc:
+        if "message is not modified" in str(exc).lower():
+            return None
+        raise
 
 
 def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, now_text, esc, admin_keyboard, sync_command_menus, clear_admin_command_menu, on_order_ui_update=None, on_main_menu_update=None, on_start_greeting_update=None):
@@ -120,7 +131,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             await db.commit()
 
     async def show(call, title, body, rows):
-        await call.message.edit_text(title + "\n\n" + body, reply_markup=_kb(rows))
+        await safe_edit(call.message, title + "\n\n" + body, reply_markup=_kb(rows))
         await call.answer()
 
     async def home(call):
@@ -157,7 +168,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
     @dp.callback_query(F.data == "bs:back")
     async def bs_back(call: CallbackQuery):
         if await allowed(call):
-            await call.message.edit_text("👑 <b>QUẢN TRỊ KM SHARE HI88</b>", reply_markup=admin_keyboard())
+            await safe_edit(call.message, "👑 <b>QUẢN TRỊ KM SHARE HI88</b>", reply_markup=admin_keyboard())
             await call.answer()
 
     @dp.callback_query(F.data == "bs:bot")
@@ -201,7 +212,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not await allowed(call): return
         await state.update_data(command_action="add", old_command=None)
         await state.set_state(BotCommandForm.value)
-        await call.message.edit_text("➕ <b>THÊM LỆNH MỚI</b>\nGửi theo mẫu: <code>ten_lenh - Mô tả lệnh</code>\nVí dụ: <code>help - Trợ giúp</code>", reply_markup=_kb([[("❌ HỦY", "bs:cmdcancel")]]))
+        await safe_edit(call.message, "➕ <b>THÊM LỆNH MỚI</b>\nGửi theo mẫu: <code>ten_lenh - Mô tả lệnh</code>\nVí dụ: <code>help - Trợ giúp</code>", reply_markup=_kb([[("❌ HỦY", "bs:cmdcancel")]]))
         await call.answer()
 
     @dp.callback_query(F.data.startswith("bs:cmdedit:"))
@@ -213,14 +224,14 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not item: return await call.answer("Không tìm thấy lệnh.", show_alert=True)
         await state.update_data(command_action="edit", old_command=name)
         await state.set_state(BotCommandForm.value)
-        await call.message.edit_text(f"✏️ <b>SỬA LỆNH /{esc(name)}</b>\nGửi tên và mô tả mới theo mẫu:\n<code>ten_lenh_moi - Mô tả mới</code>\n\nHiện tại: {esc(item.description)}", reply_markup=_kb([[("❌ HỦY", "bs:cmdcancel")]]))
+        await safe_edit(call.message, f"✏️ <b>SỬA LỆNH /{esc(name)}</b>\nGửi tên và mô tả mới theo mẫu:\n<code>ten_lenh_moi - Mô tả mới</code>\n\nHiện tại: {esc(item.description)}", reply_markup=_kb([[("❌ HỦY", "bs:cmdcancel")]]))
         await call.answer()
 
     @dp.callback_query(F.data.startswith("bs:cmddelete:"))
     async def bs_cmd_delete_prompt(call: CallbackQuery):
         if not await allowed(call): return
         name = call.data.split(":", 2)[2]
-        await call.message.edit_text(f"⚠️ <b>XÁC NHẬN XÓA LỆNH /{esc(name)}?</b>", reply_markup=_kb([[("✅ XÁC NHẬN XÓA", f"bs:cmddeleteyes:{name}"), ("❌ HỦY", "bs:cmdmenu")]]))
+        await safe_edit(call.message, f"⚠️ <b>XÁC NHẬN XÓA LỆNH /{esc(name)}?</b>", reply_markup=_kb([[("✅ XÁC NHẬN XÓA", f"bs:cmddeleteyes:{name}"), ("❌ HỦY", "bs:cmdmenu")]]))
         await call.answer()
 
     @dp.callback_query(F.data.startswith("bs:cmddeleteyes:"))
@@ -246,7 +257,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
     async def bs_cmd_cancel(call: CallbackQuery, state: FSMContext):
         if not await allowed(call): return
         await state.clear()
-        await call.message.edit_text("Đã hủy thao tác.", reply_markup=_kb([[("📋 QUẢN LÝ LỆNH", "bs:cmdmenu"), ("↩️ BOT SETTINGS", "bs:bot")]]))
+        await safe_edit(call.message, "Đã hủy thao tác.", reply_markup=_kb([[("📋 QUẢN LÝ LỆNH", "bs:cmdmenu"), ("↩️ BOT SETTINGS", "bs:bot")]]))
         await call.answer()
 
     @dp.message(BotCommandForm.value)
@@ -299,7 +310,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         field = call.data.rsplit(":", 1)[-1]
         if field not in ("name", "description", "short"):
             return await call.answer("Không thể xóa trường này.", show_alert=True)
-        await call.message.edit_text(
+        await safe_edit(call.message, 
             f"⚠️ <b>XÁC NHẬN XÓA {'TÊN BOT' if field == 'name' else ('MÔ TẢ BOT' if field == 'description' else 'MÔ TẢ NGẮN')}?</b>\n\n"
             "Nội dung hiện tại sẽ được làm trống.",
             reply_markup=_kb([
@@ -325,7 +336,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         except Exception as exc:
             return await call.answer("Telegram không cho phép xóa: " + str(exc)[:160], show_alert=True)
         await audit(call.from_user.id, "clear_bot_" + field)
-        await call.message.edit_text(
+        await safe_edit(call.message, 
             "✅ Đã xóa nội dung đã chọn.",
             reply_markup=_kb([[("🤖 BOT SETTINGS", "bs:bot"), ("↩️ BENI SYSTEM", "bs:home")]])
         )
@@ -348,14 +359,14 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await state.update_data(bot_field=field)
         await state.set_state(BotSettingForm.value)
         title, prompt = prompts[field]
-        await call.message.edit_text(f"✏️ <b>{title}</b>\n\n{prompt}", reply_markup=_kb([[("❌ HỦY", "bs:botcancel")]]))
+        await safe_edit(call.message, f"✏️ <b>{title}</b>\n\n{prompt}", reply_markup=_kb([[("❌ HỦY", "bs:botcancel")]]))
         await call.answer()
 
     @dp.callback_query(F.data == "bs:botcancel")
     async def bs_bot_cancel(call: CallbackQuery, state: FSMContext):
         if not await allowed(call): return
         await state.clear()
-        await call.message.edit_text("Đã hủy chỉnh sửa.", reply_markup=_kb([[("↩️ BOT SETTINGS", "bs:bot")]]))
+        await safe_edit(call.message, "Đã hủy chỉnh sửa.", reply_markup=_kb([[("↩️ BOT SETTINGS", "bs:bot")]]))
         await call.answer()
 
     @dp.message(BotSettingForm.value)
@@ -415,7 +426,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             return
         await audit(call.from_user.id, "update_bot_" + field, details=value[:500])
         await state.clear()
-        await call.message.edit_text("✅ Đã cập nhật cài đặt Bot thành công.", reply_markup=_kb([[("🤖 BOT SETTINGS", "bs:bot"), ("↩️ BENI SYSTEM", "bs:home")]]))
+        await safe_edit(call.message, "✅ Đã cập nhật cài đặt Bot thành công.", reply_markup=_kb([[("🤖 BOT SETTINGS", "bs:bot"), ("↩️ BENI SYSTEM", "bs:home")]]))
         await call.answer("Đã lưu.")
 
     @dp.callback_query(F.data == "bs:users")
@@ -448,7 +459,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not await allowed(call): return
         if call.from_user.id != main_admin_id: return await call.answer("Chỉ Admin chính được thêm Admin.", show_alert=True)
         await state.set_state(AdminAddForm.user_id)
-        await call.message.edit_text("➕ <b>THÊM ADMIN PHỤ</b>\nGửi Telegram ID dạng số.", reply_markup=_kb([[("❌ HỦY", "bs:admins")]]))
+        await safe_edit(call.message, "➕ <b>THÊM ADMIN PHỤ</b>\nGửi Telegram ID dạng số.", reply_markup=_kb([[("❌ HỦY", "bs:admins")]]))
         await call.answer()
 
     @dp.message(AdminAddForm.user_id)
@@ -477,7 +488,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not await allowed(call): return
         uid = int(call.data.split(":")[-1])
         if uid == main_admin_id: return await call.answer("Không thể sửa Admin chính.", show_alert=True)
-        await call.message.edit_text(f"👤 <b>ADMIN PHỤ</b>\nID: <code>{uid}</code>", reply_markup=_kb([[("🔐 CẤU HÌNH QUYỀN", f"bs:permuser:{uid}")], [("🗑 XÓA ADMIN", f"bs:admindel:{uid}")], [("↩️ DANH SÁCH", "bs:admins")]]))
+        await safe_edit(call.message, f"👤 <b>ADMIN PHỤ</b>\nID: <code>{uid}</code>", reply_markup=_kb([[("🔐 CẤU HÌNH QUYỀN", f"bs:permuser:{uid}")], [("🗑 XÓA ADMIN", f"bs:admindel:{uid}")], [("↩️ DANH SÁCH", "bs:admins")]]))
         await call.answer()
 
     @dp.callback_query(F.data.startswith("bs:admindel:"))
@@ -486,7 +497,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if call.from_user.id != main_admin_id: return await call.answer("Chỉ Admin chính được xóa.", show_alert=True)
         uid = int(call.data.split(":")[-1])
         if uid == main_admin_id: return await call.answer("Không thể xóa Admin chính.", show_alert=True)
-        await call.message.edit_text(f"⚠️ <b>XÁC NHẬN XÓA ADMIN?</b>\nID: <code>{uid}</code>", reply_markup=_kb([[("⚠️ XÁC NHẬN XÓA", f"bs:admindelconfirm:{uid}"), ("❌ HỦY", f"bs:admin:{uid}")]]))
+        await safe_edit(call.message, f"⚠️ <b>XÁC NHẬN XÓA ADMIN?</b>\nID: <code>{uid}</code>", reply_markup=_kb([[("⚠️ XÁC NHẬN XÓA", f"bs:admindelconfirm:{uid}"), ("❌ HỦY", f"bs:admin:{uid}")]]))
         await call.answer()
 
     @dp.callback_query(F.data.startswith("bs:admindelconfirm:"))
@@ -503,7 +514,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await clear_admin_command_menu(uid)
         await sync_command_menus()
         await audit(call.from_user.id, "delete_sub_admin", str(uid))
-        await call.message.edit_text("✅ Admin phụ đã bị xóa và quyền truy cập đã thu hồi.", reply_markup=_kb([[("👑 ADMIN MANAGER", "bs:admins"), ("↩️ BENI SYSTEM", "bs:home")]]))
+        await safe_edit(call.message, "✅ Admin phụ đã bị xóa và quyền truy cập đã thu hồi.", reply_markup=_kb([[("👑 ADMIN MANAGER", "bs:admins"), ("↩️ BENI SYSTEM", "bs:home")]]))
         await call.answer()
 
     @dp.callback_query(F.data == "bs:perms")
@@ -562,7 +573,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not await allowed(call): return
         theme = call.data.rsplit(":", 1)[-1]
         if theme not in ("dark", "light"): return await call.answer("Giá trị không hợp lệ.", show_alert=True)
-        await call.message.edit_text(
+        await safe_edit(call.message, 
             f"⚠️ <b>XÁC NHẬN CHUYỂN SANG {theme.upper()} MODE?</b>",
             reply_markup=_kb([[("✅ XÁC NHẬN", f"bs:themeconfirm:{theme}"), ("❌ HỦY", "bs:ui")]])
         )
@@ -577,7 +588,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             await db.execute("INSERT INTO settings(key,value) VALUES('beni_ui_theme',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (theme,))
             await db.commit()
         await audit(call.from_user.id, "set_ui_theme", details=theme)
-        await call.message.edit_text(
+        await safe_edit(call.message, 
             f"🎨 <b>UI MANAGER</b>\n\nChế độ hiển thị đã lưu: <b>{esc(theme.upper())}</b>\n\nLưu ý: theme chỉ là cấu hình nội bộ; Telegram chat không thể đổi màu giao diện ứng dụng Telegram.",
             reply_markup=_kb([[("🌙 DARK MODE", "bs:theme:dark"), ("☀️ LIGHT MODE", "bs:theme:light")], [("↩️ QUAY LẠI", "bs:home")]])
         )
@@ -602,7 +613,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not await allowed(call): return
         value = call.data.rsplit(":", 1)[-1]
         if value not in ("0", "1"): return await call.answer("Giá trị không hợp lệ.", show_alert=True)
-        await call.message.edit_text(
+        await safe_edit(call.message, 
             f"⚠️ <b>XÁC NHẬN {'BẬT' if value == '1' else 'TẮT'} THÔNG BÁO TỰ ĐỘNG?</b>",
             reply_markup=_kb([[("✅ XÁC NHẬN", f"bs:autoconfirm:{value}"), ("❌ HỦY", "bs:notify")]])
         )
@@ -618,7 +629,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
             await db.commit()
         await audit(call.from_user.id, "set_auto_announce", details=value)
         enabled = value
-        await call.message.edit_text(
+        await safe_edit(call.message, 
             "📢 <b>NOTIFICATION MANAGER</b>\n\n"
             f"Kênh thông báo đơn: <code>{esc(os.getenv('ORDER_ANNOUNCE_CHANNEL', '@sharegame1'))}</code>\n"
             f"Thông báo tự động: {'🟢 BẬT' if enabled == '1' else '⚫ TẮT'}\n\n"
@@ -676,7 +687,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         name = call.data.split(":", 2)[2]
         if not re.fullmatch(r"share_hi88_\d{8}_\d{6}\.sqlite3", name):
             return await call.answer("Tên bản sao lưu không hợp lệ.", show_alert=True)
-        await call.message.edit_text(
+        await safe_edit(call.message, 
             f"⚠️ <b>XÁC NHẬN XÓA BẢN SAO LƯU?</b>\n\n<code>{esc(name)}</code>\n"
             "Thao tác này chỉ xóa file backup đã chọn, không ảnh hưởng database đang chạy.",
             reply_markup=_kb([
@@ -701,7 +712,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         except OSError as exc:
             return await call.answer("Không thể xóa file: " + str(exc)[:120], show_alert=True)
         await audit(call.from_user.id, "delete_database_backup", name)
-        await call.message.edit_text(
+        await safe_edit(call.message, 
             f"🗑 Đã xóa bản sao lưu <code>{esc(name)}</code>.",
             reply_markup=_kb([[("📜 DANH SÁCH BACKUP", "bs:backups"), ("↩️ DATABASE", "bs:db")]])
         )
@@ -749,7 +760,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not await allowed(call): return
         value = call.data.rsplit(":", 1)[-1]
         if value not in ("0", "1"): return await call.answer("Giá trị không hợp lệ.", show_alert=True)
-        await call.message.edit_text(
+        await safe_edit(call.message, 
             f"⚠️ <b>XÁC NHẬN {'BẬT' if value == '1' else 'TẮT'} CHẾ ĐỘ BẢO TRÌ?</b>\n"
             "Thay đổi sẽ được lưu vào database.",
             reply_markup=_kb([[("✅ XÁC NHẬN", f"bs:maintconfirm:{value}"), ("❌ HỦY", "bs:maintenance")]])
@@ -883,7 +894,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await state.clear()
         await state.update_data(menu_id=key)
         await state.set_state(MenuForm.label)
-        await call.message.edit_text("✏️ <b>ĐỔI TÊN MENU</b>\nTên hiện tại: " + esc(item["label"]) + "\nGửi tên nút mới:")
+        await safe_edit(call.message, "✏️ <b>ĐỔI TÊN MENU</b>\nTên hiện tại: " + esc(item["label"]) + "\nGửi tên nút mới:")
         await call.answer()
 
     @dp.message(MenuForm.label)
@@ -952,7 +963,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if not await allowed(call): return
         await state.clear()
         await state.set_state(MenuForm.rows)
-        await call.message.edit_text("🔢 Gửi số nút trên mỗi hàng (1–4).")
+        await safe_edit(call.message, "🔢 Gửi số nút trên mỗi hàng (1–4).")
         await call.answer()
 
     @dp.message(MenuForm.rows)
@@ -972,7 +983,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         _, _, greeting = await menu_load()
         await state.clear()
         await state.set_state(MenuForm.greeting)
-        await call.message.edit_text("👋 <b>LỜI CHÀO /START</b>\nNội dung hiện tại:\n" + esc(greeting) + "\n\nGửi lời chào mới. Có thể dùng {username} và {id}.")
+        await safe_edit(call.message, "👋 <b>LỜI CHÀO /START</b>\nNội dung hiện tại:\n" + esc(greeting) + "\n\nGửi lời chào mới. Có thể dùng {username} và {id}.")
         await call.answer()
 
     @dp.message(MenuForm.greeting)
@@ -1031,7 +1042,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await state.clear()
         await state.update_data(order_ui_key=key)
         await state.set_state(OrderUiForm.value)
-        await call.message.edit_text(
+        await safe_edit(call.message, 
             f"✏️ <b>SỬA {esc(label)}</b>\n\nNội dung hiện tại:\n<code>{esc(current[:1200])}</code>\n\nGửi nội dung mới. Có thể dùng xuống dòng. Với [complete], có thể dùng biến: {{site_name}}, {{product_code}}, {{order_id}}, {{account_name}}, {{stk}}, {{price}}, {{status}}.",
             reply_markup=_kb([[("♻️ KHÔI PHỤC MẶC ĐỊNH", f"bs:orderui:reset:{key}")], [("↩️ DANH SÁCH", "bs:orderui")]])
         )
@@ -1065,7 +1076,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         if on_order_ui_update:
             on_order_ui_update(key, value)
         await state.clear()
-        await call.message.edit_text("✅ Đã lưu nội dung cấu hình. Nội dung được lưu bền vững trong database.", reply_markup=_kb([[("🧩 QUẢN LÝ NÚT ĐẶT ĐƠN", "bs:orderui")], [("↩️ BENI SYSTEM", "bs:home")]]))
+        await safe_edit(call.message, "✅ Đã lưu nội dung cấu hình. Nội dung được lưu bền vững trong database.", reply_markup=_kb([[("🧩 QUẢN LÝ NÚT ĐẶT ĐƠN", "bs:orderui")], [("↩️ BENI SYSTEM", "bs:home")]]))
         await call.answer("Đã lưu.")
 
     @dp.callback_query(F.data.startswith("bs:orderui:reset:"))
@@ -1074,7 +1085,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await state.clear()
         key = call.data.rsplit(":", 1)[-1]
         if key not in ORDER_UI_ITEMS: return await call.answer("Mục không hợp lệ.", show_alert=True)
-        await call.message.edit_text(f"⚠️ <b>KHÔI PHỤC MẶC ĐỊNH?</b>\n\n{esc(ORDER_UI_ITEMS[key][0])}", reply_markup=_kb([[("✅ XÁC NHẬN", f"bs:orderui:resetconfirm:{key}")], [("❌ HỦY", f"bs:orderui:item:{key}")]]))
+        await safe_edit(call.message, f"⚠️ <b>KHÔI PHỤC MẶC ĐỊNH?</b>\n\n{esc(ORDER_UI_ITEMS[key][0])}", reply_markup=_kb([[("✅ XÁC NHẬN", f"bs:orderui:resetconfirm:{key}")], [("❌ HỦY", f"bs:orderui:item:{key}")]]))
         await call.answer()
 
     @dp.callback_query(F.data.startswith("bs:orderui:resetconfirm:"))
