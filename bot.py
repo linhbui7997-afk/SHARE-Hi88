@@ -270,13 +270,6 @@ PUBLIC_BOT_COMMANDS = [
 ]
 ADMIN_BOT_COMMANDS = [
     BotCommand(command="admin", description="🛠 Bảng điều khiển QTV"),
-    BotCommand(command="qtv", description="⏳ Đơn hàng chờ xử lý"),
-    BotCommand(command="xuly", description="📦 Quản lý đơn hàng"),
-    BotCommand(command="list", description="👥 Quản lý khách hàng"),
-    BotCommand(command="sodu", description="💰 Quản lý số dư"),
-    BotCommand(command="tb", description="📢 Gửi thông báo"),
-    BotCommand(command="tke", description="📊 Thống kê hệ thống"),
-    BotCommand(command="caidat", description="⚙️ Cài đặt hệ thống"),
 ]
 
 
@@ -364,12 +357,6 @@ class AdminWalletForm(StatesGroup):
 
 class AdminPriceForm(StatesGroup):
     price = State()
-
-
-class AdminStkForm(StatesGroup):
-    slot = State()
-    last4 = State()
-    label = State()
 
 
 class AdminSiteForm(StatesGroup):
@@ -536,54 +523,6 @@ async def admin(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ Bạn không có quyền truy cập.")
     await message.answer("👑 <b>QUẢN TRỊ KM SHARE HI88</b>\nChọn chức năng:", reply_markup=admin_kb())
-
-
-async def admin_command_shortcut(message: Message, title: str, callback_data: str, permission: str):
-    user_id = message.from_user.id
-    if not is_admin(user_id):
-        return await message.answer("⛔ Bạn không có quyền truy cập.")
-    if not await has_admin_permission(user_id, permission):
-        return await message.answer("⛔ Bạn chưa được cấp quyền: " + permission)
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=title, callback_data=callback_data)],
-        [InlineKeyboardButton(text="↩️ MỞ BẢNG QTV", callback_data="admin_home")]
-    ])
-    await message.answer(title, reply_markup=keyboard)
-
-
-@dp.message(Command("qtv"))
-async def command_qtv(message: Message):
-    await admin_command_shortcut(message, "⏳ ĐƠN HÀNG CHỜ XỬ LÝ", "adm_waiting", "orders.review")
-
-
-@dp.message(Command("xuly"))
-async def command_xuly(message: Message):
-    await admin_command_shortcut(message, "📦 QUẢN LÝ ĐƠN HÀNG", "adm_orders", "orders.review")
-
-
-@dp.message(Command("list"))
-async def command_list(message: Message):
-    await admin_command_shortcut(message, "👥 QUẢN LÝ KHÁCH HÀNG", "adm_users", "users.manage")
-
-
-@dp.message(Command("sodu"))
-async def command_sodu(message: Message):
-    await admin_command_shortcut(message, "💰 QUẢN LÝ SỐ DƯ", "adm_wallet", "wallet.adjust")
-
-
-@dp.message(Command("tb"))
-async def command_tb(message: Message):
-    await admin_command_shortcut(message, "📢 GỬI THÔNG BÁO", "broadcast_start", "notifications.send")
-
-
-@dp.message(Command("tke"))
-async def command_tke(message: Message):
-    await admin_command_shortcut(message, "📊 THỐNG KÊ HỆ THỐNG", "adm_report", "reports.read")
-
-
-@dp.message(Command("caidat"))
-async def command_caidat(message: Message):
-    await admin_command_shortcut(message, "⚙️ CÀI ĐẶT HỆ THỐNG", "adm_settings", "settings.manage")
 
 
 @dp.callback_query(F.data == "home")
@@ -1400,41 +1339,6 @@ async def admin_set_price(message: Message, state: FSMContext):
     await set_setting("product_price_vnd", raw)
     await state.clear()
     await message.answer(f"✅ Đã lưu giá mới: {money(int(raw))}. Giá mới được áp dụng cho đơn tiếp theo.")
-
-
-@dp.message(Command("setstk"))
-async def set_stk(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    await state.set_state(AdminStkForm.slot)
-    await message.answer("Nhập số thứ tự STK cần cấu hình (1–4):")
-
-
-@dp.message(AdminStkForm.slot)
-async def stk_slot(message: Message, state: FSMContext):
-    if (message.text or "") not in ("1", "2", "3", "4"):
-        return await message.answer("Chỉ chọn 1, 2, 3 hoặc 4.")
-    await state.update_data(slot=message.text)
-    await state.set_state(AdminStkForm.last4)
-    await message.answer("Nhập 6 số cuối STK:")
-
-
-@dp.message(AdminStkForm.last4)
-async def stk_last4(message: Message, state: FSMContext):
-    digits = re.sub(r"\D", "", message.text or "")
-    if len(digits) != 6:
-        return await message.answer("Cần đúng 6 chữ số.")
-    await state.update_data(last4=digits)
-    await state.set_state(AdminStkForm.label)
-    await message.answer("Nhập nhãn/mô tả STK (không nhập toàn bộ số tài khoản):")
-
-
-@dp.message(AdminStkForm.label)
-async def stk_label(message: Message, state: FSMContext):
-    data = await state.get_data()
-    await set_setting(f"stk{data['slot']}", f"{(message.text or '').strip()} • ****{data['last4']}")
-    await state.clear()
-    await message.answer(f"✅ Đã lưu STK {data['slot']}.")
 
 
 @dp.callback_query(F.data == "site_add")
