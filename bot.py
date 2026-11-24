@@ -252,8 +252,7 @@ def admin_kb():
          InlineKeyboardButton(text="💳 YÊU CẦU NẠP TIỀN", callback_data="adm_deposits")],
         [InlineKeyboardButton(text="💰 ĐIỀU CHỈNH SỐ DƯ VÍ", callback_data="adm_wallet"),
          InlineKeyboardButton(text="🏦 TÀI KHOẢN NHẬN TIỀN", callback_data="adm_stks")],
-        [InlineKeyboardButton(text="🛍️ SẢN PHẨM – GIÁ", callback_data="adm_price"),
-         InlineKeyboardButton(text="➕ QUẢN LÝ SITE", callback_data="adm_sites")],
+        [InlineKeyboardButton(text="➕ QUẢN LÝ SITE / SẢN PHẨM – GIÁ", callback_data="adm_sites")]
         [InlineKeyboardButton(text="📢 THÔNG BÁO TOÀN THÀNH VIÊN", callback_data="broadcast_start")],
         [InlineKeyboardButton(text="📨 THÔNG BÁO ID RIÊNG", callback_data="adm_notify"),
          InlineKeyboardButton(text="📊 BÁO CÁO", callback_data="adm_report")],
@@ -351,11 +350,6 @@ async def show_home(target, user):
         await target.answer()
     else:
         await target.answer(text, reply_markup=main_kb(user.id))
-
-
-class OrderForm(StatesGroup):
-    account_name = State()
-    stk_last4 = State()
 
 
 class DepositForm(StatesGroup):
@@ -1222,13 +1216,15 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
     if not is_admin(call.from_user.id):
         return await call.answer("Không có quyền.", show_alert=True)
     action = call.data
+    # Backward compatibility: old price-menu callbacks open the unified site manager.
+    if action == "adm_price":
+        action = "adm_sites"
     required = {
         "adm_waiting": "orders.review", "adm_orders": "orders.review",
         "adm_users": "users.manage", "adm_deposits": "deposits.review",
         "adm_wallet": "wallet.adjust", "adm_notify": "notifications.send",
         "adm_report": "reports.read", "adm_stks": "settings.manage",
-        "adm_price": "settings.manage", "adm_sites": "settings.manage",
-        "adm_settings": "settings.manage"
+        "adm_sites": "settings.manage", "adm_settings": "settings.manage"
     }.get(action)
     if required and not await has_admin_permission(call.from_user.id, required):
         return await call.answer("⛔ Bạn chưa được cấp quyền: " + required, show_alert=True)
@@ -1288,26 +1284,6 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
     elif action == "adm_wallet":
         await state.set_state(AdminWalletForm.user_id)
         await call.message.edit_text("💰 Nhập Telegram ID khách hàng:", reply_markup=back_kb())
-        return await call.answer()
-    elif action == "adm_price":
-        async with aiosqlite.connect(DB_PATH) as db:
-            cur = await db.execute("SELECT id,name,product_code,price,description,active FROM sites ORDER BY id")
-            rows = await cur.fetchall()
-        buttons = []
-        for r in rows:
-            buttons.append([
-                InlineKeyboardButton(text=f"✏️ {r[1]} • {money(r[3])}", callback_data=f"site_price:{r[0]}"),
-                InlineKeyboardButton(text="🗑 XÓA", callback_data=f"site_delete:{r[0]}")
-            ])
-        buttons.append([InlineKeyboardButton(text="↩️ VỀ QUẢN TRỊ", callback_data="admin_home")])
-        await call.message.edit_text(
-            "👑 <b>QUẢN TRỊ KM SHARE HI88</b>\n\n"
-            "🛍️ <b>QUẢN LÝ SẢN PHẨM – GIÁ</b>\n\n"
-            "Chọn site để chỉnh mã sản phẩm, giá bán và mô tả.\n"
-            "⚠️ Khi lưu nội dung mới, nội dung cũ của trường đó sẽ được thay thế hoàn toàn.\n"
-            "Mô tả nhập dấu <code>-</code> nếu muốn xóa mô tả hiện tại.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-        )
         return await call.answer()
     elif action == "adm_stks":
         text = (
@@ -1446,7 +1422,7 @@ async def stk_slot(message: Message, state: FSMContext):
 @dp.message(AdminStkForm.last4)
 async def stk_last4(message: Message, state: FSMContext):
     digits = re.sub(r"\D", "", message.text or "")
-    if len(digits) != 4:
+    if len(digits) != 6:
         return await message.answer("Cần đúng 6 chữ số.")
     await state.update_data(last4=digits)
     await state.set_state(AdminStkForm.label)
