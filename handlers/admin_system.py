@@ -30,6 +30,7 @@ class BotCommandForm(StatesGroup):
 
 class OrderUiForm(StatesGroup):
     label = State()
+    edit_label = State()
     value = State()
 
 class MenuForm(StatesGroup):
@@ -1172,19 +1173,125 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         async with aiosqlite.connect(db_path) as db:
             for key, (label, default) in ORDER_UI_ITEMS.items():
                 cur = await db.execute("SELECT value FROM settings WHERE key=?", ("order_ui_" + key,))
-                row = await cur.fetchone()
-                status = "📝 ĐÃ TÙY CHỈNH" if row else "⚪ MẶC ĐỊNH"
-                rows.append([(f"{label} · {status}", f"bs:orderui:item:{key}")])
-            custom_items = await orderui_custom_items()
-            for item in custom_items:
-                cur = await db.execute("SELECT value FROM settings WHERE key=?", ("order_ui_" + item["key"],))
                 saved = await cur.fetchone()
                 status = "📝 ĐÃ TÙY CHỈNH" if saved else "⚪ MẶC ĐỊNH"
-                rows.append([(f"[{item['key']}] • {item['label']} · {status}", f"bs:orderui:item:{item['key']}")])
-        rows += [[("➕ THÊM NÚT", "bs:orderui:add")],
+                rows.append([(f"🔒 {label} · {status}", f"bs:orderui:item:{key}")])
+        custom_items = await orderui_custom_items()
+        custom_items.sort(key=lambda item: int(item.get("position", 0)))
+        for index, item in enumerate(custom_items):
+            key = item.get("key", "")
+            enabled = item.get("enabled", True)
+            status = "✅ ĐANG HIỆN" if enabled else "⬜ ĐANG ẨN"
+            rows.append([
+                (f"{status} · [{key}] {item.get('label', '')}", f"bs:orderui:item:{key}"),
+                ("⬆️", f"bs:orderui:move:{key}:up"),
+                ("⬇️", f"bs:orderui:move:{key}:down")
+            ])
+            rows.append([
+                ("✏️ SỬA TÊN", f"bs:orderui:rename:{key}"),
+                ("🔄 ẨN/HIỆN", f"bs:orderui:toggle:{key}"),
+                ("🗑 XÓA", f"bs:orderui:delete:{key}")
+            ])
+        rows += [[("➕ THÊM MENU MỚI", "bs:orderui:add")],
                  [("↩️ QUAY LẠI BENI SYSTEM", "bs:home")]]
-        await show(call, "🧩 <b>QUẢN LÝ NÚT & NỘI DUNG ĐẶT ĐƠN</b>",
-                   "Mã trong ngoặc vuông là mã nội bộ, không hiển thị cho khách. Chọn từng mục để sửa, xem trước và xác nhận lưu.", rows)
+        guide = (
+            "✅ đang hiện · ⬜ đang ẩn · 🔒 cố định\\n\\n"
+            "⬆️⬇️ đổi thứ tự · Bấm tên để sửa nội dung\\n"
+            "✏️ sửa tên / nội dung · 🗑 xóa menu tự thêm\\n"
+            "🏷 Mỗi nút có mã [code] riêng, mã giữ nguyên khi đổi tên.\\n"
+            "➕ thêm menu mới"
+        )
+        await show(call, "🧩 <b>QUẢN LÝ NÚT & NỘI DUNG ĐẶT ĐƠN</b>", guide, rows)
+
+
+    @dp.callback_query(F.data.startswith("bs:orderui:toggle:"))
+    async def bs_orderui_toggle(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        key = call.data.rsplit(":", 1)[-1]
+        items = await orderui_custom_items()
+        item = next((x for x in items if x.get("key") == key), None)
+        if not item: return await call.answer("Chỉ menu tự thêm mới được bật/tắt.", show_alert=True)
+        item["enabled"] = not item.get("enabled", True)
+        await orderui_save_custom_items(items)
+        await bs_orderui(call, state)
+        await call.answer("Đã cập nhật trạng thái.")
+
+    @dp.callback_query(F.data.startswith("bs:orderui:move:"))
+    async def bs_orderui_move(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        parts = call.data.split(":")
+        if len(parts) != 5: return await call.answer("Yêu cầu không hợp lệ.", show_alert=True)
+        key, direction = parts[3], parts[4]
+        items = await orderui_custom_items()
+        items.sort(key=lambda item: int(item.get("position", 0)))
+        index = next((i for i, item in enumerate(items) if item.get("key") == key), None)
+        if index is None: return await call.answer("Không tìm thấy menu.", show_alert=True)
+        target = index - 1 if direction == "up" else index + 1
+        if target < 0 or target >= len(items):
+            return await call.answer("Menu đã ở vị trí giới hạn.")
+        items[index], items[target] = items[target], items[index]
+        for pos, item in enumerate(items):
+            item["position"] = pos
+        await orderui_save_custom_items(items)
+        await bs_orderui(call, state)
+        await call.answer("Đã đổi thứ tự.")
+
+    @dp.callback_query(F.data.startswith("bs:orderui:delete:"))
+    async def bs_orderui_delete_prompt(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        key = call.data.rsplit(":", 1)[-1]
+        item = next((x for x in await orderui_custom_items() if x.get("key") == key), None)
+        if not item: return await call.answer("Không thể xóa mục hệ thống.", show_alert=True)
+        await safe_edit(call.message,
+            f"🗑 <b>XÓA MENU TỰ THÊM?</b>\n\n[{key}] • {esc(item.get('label', ''))}\n\nThao tác này sẽ xóa mục khỏi danh sách quản lý.",
+            reply_markup=_kb([[("✅ XÁC NHẬN XÓA", f"bs:orderui:deleteconfirm:{key}")], [("↩️ HỦY", "bs:orderui")]])
+        )
+        await call.answer()
+
+    @dp.callback_query(F.data.startswith("bs:orderui:deleteconfirm:"))
+    async def bs_orderui_delete(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        key = call.data.rsplit(":", 1)[-1]
+        items = await orderui_custom_items()
+        updated = [item for item in items if item.get("key") != key]
+        if len(updated) == len(items): return await call.answer("Menu không tồn tại.", show_alert=True)
+        await orderui_save_custom_items(updated)
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute("DELETE FROM settings WHERE key=?", ("order_ui_" + key,))
+            await db.commit()
+        await audit(call.from_user.id, "delete_order_ui_custom", key)
+        await bs_orderui(call, state)
+        await call.answer("Đã xóa menu tự thêm.")
+
+    @dp.callback_query(F.data.startswith("bs:orderui:rename:"))
+    async def bs_orderui_rename_prompt(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        key = call.data.rsplit(":", 1)[-1]
+        item = next((x for x in await orderui_custom_items() if x.get("key") == key), None)
+        if not item: return await call.answer("Chỉ menu tự thêm mới được đổi tên.", show_alert=True)
+        await state.clear()
+        await state.update_data(order_ui_rename_key=key)
+        await state.set_state(OrderUiForm.edit_label)
+        await safe_edit(call.message, f"✏️ <b>ĐỔI TÊN MENU</b>\n\nMã [{key}] sẽ được giữ nguyên. Gửi tên mới cho menu:")
+        await call.answer()
+
+    @dp.message(OrderUiForm.edit_label)
+    async def bs_orderui_rename_save(message: Message, state: FSMContext):
+        if message.from_user.id not in admin_ids: return
+        label = (message.text or "").strip()
+        data = await state.get_data()
+        key = data.get("order_ui_rename_key")
+        if not label or len(label) > 64:
+            return await message.answer("Tên menu phải từ 1 đến 64 ký tự. Hãy gửi lại.")
+        items = await orderui_custom_items()
+        item = next((x for x in items if x.get("key") == key), None)
+        if not item: return await message.answer("Menu không còn tồn tại.")
+        item["label"] = label
+        await orderui_save_custom_items(items)
+        await audit(message.from_user.id, "rename_order_ui_custom", key, label)
+        await state.clear()
+        await message.answer(f"✅ Đã đổi tên thành <b>{esc(label)}</b>. Mã nội bộ <code>[{key}]</code> được giữ nguyên.",
+            reply_markup=_kb([[("🧩 QUẢN LÝ NÚT & NỘI DUNG ĐẶT ĐƠN", "bs:orderui")]]))
 
     @dp.callback_query(F.data == "bs:orderui:add")
     async def bs_orderui_add(call: CallbackQuery, state: FSMContext):
