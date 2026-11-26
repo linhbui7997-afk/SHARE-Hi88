@@ -1157,14 +1157,17 @@ async def publish_order_announcement(order_id):
         await db.commit()
 
     product, product_code, account_name, price = order
+    is_code_game = str(product).startswith("CODE GAME ")
+    display_product = str(product)[10:] if is_code_game else str(product)
+    product_kind = "CODE GAME" if is_code_game else "KM SHARE"
     approved_at = datetime.now(TZ).strftime("%d/%m/%Y - %H:%M")
     post = (
         "🎉 <b>ĐƠN HÀNG ĐÃ XỬ LÝ THÀNH CÔNG</b>\n\n"
         "✅ <b>GIAO DỊCH THÀNH CÔNG</b>\n\n"
-        f"🎁 <b>KM SHARE {esc(product)}</b>\n\n"
+        f"🎮 <b>{product_kind} {esc(display_product)}</b>\n\n"
         "━━━━━━━━━━━━━━━\n\n"
         f"👤 Tài khoản: <code>{esc(account_name)}</code>\n\n"
-        f"🎟 Gói khuyến mãi: <code>KM SHARE {esc(product)} [{esc(product_code)}]</code>\n\n"
+        f"🎟 Gói dịch vụ: <code>{product_kind} {esc(display_product)} [{esc(product_code)}]</code>\n\n"
         f"💰 Giá trị đơn: <code>{money(price)}</code>\n\n"
         f"🆔 Mã đơn hàng: <code>DH{order_id:08d}</code>\n\n"
         f"📆 Thời gian: <code>{approved_at}</code>\n\n"
@@ -1219,7 +1222,7 @@ async def admin_order_done(call: CallbackQuery):
         await db.commit()
 
     customer_username = f"@{esc(username)}" if username else "Không có username"
-    product_name = f"KM SHARE {product} [{product_code}]"
+    product_name = f"CODE GAME {str(product)[10:]} [{product_code}]" if str(product).startswith("CODE GAME ") else f"KM SHARE {product} [{product_code}]"
     customer_notice = (
         "🎉 <b>THÔNG BÁO ĐƠN HÀNG ĐÃ XỬ LÝ</b>\n\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
@@ -1364,10 +1367,12 @@ async def admin_menu(call: CallbackQuery, state: FSMContext):
         )
         for r in rows:
             oid, uid, username, product, code, account, last4, price, status, created = r
+            order_kind = "CODE GAME" if str(product).startswith("CODE GAME ") else "KM SHARE"
+            order_display = str(product)[10:] if order_kind == "CODE GAME" else str(product)
             detail = (
                 f"📦 <b>ĐƠN DH{oid:08d}</b>\n"
                 f"👤 Khách: @{esc(username) if username else 'Không có username'} (<code>{uid}</code>)\n"
-                f"🎁 Gói: <b>KM SHARE {esc(product)}</b> • Mã {esc(code)}\n"
+                f"🎮 Gói: <b>{order_kind} {esc(order_display)}</b> • Mã {esc(code)}\n"
                 f"🎮 Tài khoản: <code>{esc(account)}</code>\n"
                 f"🏦 {required_stk_digits(product)} số cuối STK: <code>{esc(last4)}</code>\n"
                 f"💰 Giá trị: <b>{money(price)}</b>\n"
