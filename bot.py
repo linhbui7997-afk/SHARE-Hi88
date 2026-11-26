@@ -45,10 +45,10 @@ SEPAY_QR_TEMPLATE = os.getenv("SEPAY_QR_TEMPLATE", "compact2")
 ORDER_ANNOUNCE_CHANNEL = os.getenv("ORDER_ANNOUNCE_CHANNEL", "@sharegame1")
 SEPAY_PREFIX = re.sub(r"[^A-Z0-9]", "", os.getenv("SEPAY_CODE_PREFIX", "SH").upper())[:5] or "SH"
 TZ = ZoneInfo("Asia/Ho_Chi_Minh")
-ORDER_UI_DEFAULTS = {"hot":"🎁 ĐẶT ĐƠN KM SHARE","hi88":"🎁 SHARE Hi88","qq88":"🎁 SHARE QQ88","hi88_name":"👤 Vui lòng nhập tên tài khoản Hi88:","hi88_stk":"🏦 Nhập đúng 4 số cuối STK ngân hàng đã liên kết với tài khoản Hi88:","qq88_name":"👤 Vui lòng nhập tên tài khoản QQ88:","qq88_stk":"🏦 Nhập đúng 6 số cuối STK ngân hàng đã liên kết với tài khoản QQ88:","confirm":"✅ XÁC NHẬN THANH TOÁN","complete":"🎉 <b>ĐẶT ĐƠN THÀNH CÔNG</b>\n\n━━━━━━━━━━━━━━━━━━\n✅ Thanh toán đơn hàng thành công!\n\n🎁 Sản phẩm: <b>SHARE {site_name}</b>\n🎟 Gói khuyến mãi: <b>{product_code} điểm</b>\n🧾 Mã đơn: <code>{order_id}</code>\n👤 Tài khoản: <code>{account_name}</code>\n🏦 {digits} số cuối STK: <code>{stk}</code>\n💰 Đã thanh toán: <b>{price}</b>\n⏳ Trạng thái: <b>{status}</b>\n━━━━━━━━━━━━━━━━━━\n\n📢 Đơn hàng đã được gửi đến quản trị viên. Vui lòng chờ thông báo khi đơn được xử lý hoàn tất."}
+ORDER_UI_DEFAULTS = {"hot":"📦 ĐẶT ĐƠN","code_game":"🎮 CODE GAME","km_share":"🎁 KM SHARE","rr88":"🎮 RR88","mm88":"🎮 MM88","code_game_name":"👤 Vui lòng nhập tên tài khoản {site_name}:","code_game_stk":"🏦 Vui lòng nhập đúng 4 số cuối STK đã liên kết với game {site_name}:","code_game_complete":"🎉 <b>ĐẶT ĐƠN CODE GAME THÀNH CÔNG</b>\n\n🧾 Mã đơn: <code>{order_id}</code>\n🎮 Game: <b>{site_name}</b>\n👤 Tài khoản: <code>{account_name}</code>\n🏦 4 số cuối STK: <code>{stk}</code>\n💰 Đã thanh toán: <b>{price}</b>\n⏳ Trạng thái: <b>{status}</b>","hi88":"🎁 SHARE Hi88","qq88":"🎁 SHARE QQ88","hi88_name":"👤 Vui lòng nhập tên tài khoản Hi88:","hi88_stk":"🏦 Nhập đúng 4 số cuối STK ngân hàng đã liên kết với tài khoản Hi88:","qq88_name":"👤 Vui lòng nhập tên tài khoản QQ88:","qq88_stk":"🏦 Nhập đúng 6 số cuối STK ngân hàng đã liên kết với tài khoản QQ88:","confirm":"✅ XÁC NHẬN THANH TOÁN","complete":"🎉 <b>ĐẶT ĐƠN THÀNH CÔNG</b>\n\n━━━━━━━━━━━━━━━━━━\n✅ Thanh toán đơn hàng thành công!\n\n🎁 Sản phẩm: <b>SHARE {site_name}</b>\n🎟 Gói khuyến mãi: <b>{product_code} điểm</b>\n🧾 Mã đơn: <code>{order_id}</code>\n👤 Tài khoản: <code>{account_name}</code>\n🏦 {digits} số cuối STK: <code>{stk}</code>\n💰 Đã thanh toán: <b>{price}</b>\n⏳ Trạng thái: <b>{status}</b>\n━━━━━━━━━━━━━━━━━━\n\n📢 Đơn hàng đã được gửi đến quản trị viên. Vui lòng chờ thông báo khi đơn được xử lý hoàn tất."}
 ORDER_UI_CACHE = dict(ORDER_UI_DEFAULTS)
 MAIN_MENU_DEFAULTS = [
-    {"id":"hot","label":"🎁 ĐẶT ĐƠN KM SHARE","enabled":True,"locked":True,"action":"hot","content":"","url":"","photo":""},
+    {"id":"hot","label":"📦 ĐẶT ĐƠN","enabled":True,"locked":True,"action":"hot","content":"","url":"","photo":""},
     {"id":"deposit","label":"💳 NẠP TIỀN","enabled":True,"locked":False,"action":"deposit","content":"","url":"","photo":""},
     {"id":"wallet","label":"👛 SỐ DƯ TÀI KHOẢN","enabled":True,"locked":False,"action":"wallet","content":"","url":"","photo":""},
     {"id":"history","label":"📊 LỊCH SỬ GIAO DỊCH","enabled":True,"locked":False,"action":"history","content":"","url":"","photo":""},
@@ -150,6 +150,10 @@ async def init_db():
                 "INSERT INTO sites(name,product_code,price,active,created_at) VALUES(?,?,?,?,?)",
                 [("HI88", "108", 50000, 1, now_text()), ("QQ88", "108", 50000, 1, now_text())]
             )
+        await db.executemany(
+            "INSERT OR IGNORE INTO sites(name,product_code,price,active,created_at) VALUES(?,?,?,?,?)",
+            [("RR88", "CODE", 0, 1, now_text()), ("MM88", "CODE", 0, 1, now_text())]
+        )
         await db.commit()
         cur = await db.execute("SELECT value FROM settings WHERE key='main_menu_config'")
         saved_menu = await cur.fetchone()
@@ -174,6 +178,9 @@ async def init_db():
             tag = key.removeprefix("order_ui_")
             if tag in ORDER_UI_DEFAULTS: ORDER_UI_CACHE[tag] = value
         hot_item = next((x for x in MAIN_MENU_CACHE if x.get("id") == "hot"), None)
+        if hot_item and hot_item.get("label") == "🎁 ĐẶT ĐƠN KM SHARE":
+            hot_item["label"] = "📦 ĐẶT ĐƠN"
+            await db.execute("UPDATE settings SET value=? WHERE key='main_menu_config'", (json.dumps(MAIN_MENU_CACHE, ensure_ascii=False),))
         if hot_item: ORDER_UI_CACHE["hot"] = hot_item.get("label", ORDER_UI_CACHE["hot"])
 
 
@@ -399,6 +406,12 @@ class OrderForm(StatesGroup):
     confirm = State()
 
 
+class CodeGameForm(StatesGroup):
+    account_name = State()
+    stk_last4 = State()
+    confirm = State()
+
+
 @dp.message(CommandStart())
 async def start(message: Message, state: FSMContext):
     await state.clear()
@@ -425,32 +438,13 @@ async def reply_buy(message: Message, state: FSMContext):
     if (message.text or "").strip() != ORDER_UI_CACHE["hot"]: return
     await state.clear()
     await send_menu_extras(message, "hot")
-    async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("SELECT id,name,product_code,price FROM sites WHERE active=1 ORDER BY id")
-        sites = await cur.fetchall()
-    buttons, row = [], []
-    for site in sites:
-        ui_key = "qq88" if "QQ88" in site[1].upper() else "hi88"
-        row.append(InlineKeyboardButton(text=ORDER_UI_CACHE[ui_key], callback_data=f"site:{site[0]}"))
-        if len(row) == 2:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
-    buttons.append([InlineKeyboardButton(text="↩️ QUAY LẠI MENU", callback_data="home")])
     await message.answer(
-        "🎁 <b>ĐẶT ĐƠN KM SHARE</b>\n\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        "🎉 <b>CHỌN CHƯƠNG TRÌNH KHUYẾN MÃI</b>\n\n"
-        "➜ 🎁 SHARE Hi88 [108 điểm / 50K]\n"
-        "➜ 🎁 SHARE QQ88 [108 điểm / 50K]\n\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        "👇 Vui lòng chọn chương trình muốn tham gia bên dưới.\n\n"
-        "📌 <b>HƯỚNG DẪN ĐẶT ĐƠN</b>\n"
-        "🔹 Hi88: Tên tài khoản + 4 số cuối STK đã liên kết.\n"
-        "🔹 QQ88: Tên tài khoản + 6 số cuối STK đã liên kết.\n\n"
-        "💰 Giá mỗi đơn: <b>50.000đ</b>",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        "📦 <b>ĐẶT ĐƠN</b>\n\nVui lòng chọn một trong hai danh mục bên dưới.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=ORDER_UI_CACHE["km_share"], callback_data="order:kmshare")],
+            [InlineKeyboardButton(text=ORDER_UI_CACHE["code_game"], callback_data="order:codegame")],
+            [InlineKeyboardButton(text="↩️ QUAY LẠI MENU", callback_data="home")]
+        ])
     )
 
 
@@ -545,7 +539,7 @@ async def cb_home(call: CallbackQuery, state: FSMContext):
 async def buy(call: CallbackQuery, state: FSMContext):
     await state.clear()
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("SELECT id,name,product_code,price FROM sites WHERE active=1 ORDER BY id")
+        cur = await db.execute("SELECT id,name,product_code,price FROM sites WHERE active=1 AND UPPER(name) NOT IN ('RR88','MM88') ORDER BY id")
         sites = await cur.fetchall()
     buttons = []
     row = []
@@ -574,6 +568,182 @@ async def buy(call: CallbackQuery, state: FSMContext):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await call.answer()
+
+
+
+@dp.callback_query(F.data == "order:kmshare")
+async def order_open_kmshare(call: CallbackQuery, state: FSMContext):
+    await buy(call, state)
+
+
+@dp.callback_query(F.data == "order:codegame")
+async def order_open_codegame(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT id,name,product_code,price FROM sites WHERE active=1 AND UPPER(name) IN ('RR88','MM88') ORDER BY CASE UPPER(name) WHEN 'RR88' THEN 1 ELSE 2 END")
+        games = await cur.fetchall()
+    if not games:
+        return await call.answer("CODE GAME hiện chưa có game hoạt động.", show_alert=True)
+    rows = [[InlineKeyboardButton(text=ORDER_UI_CACHE.get(str(g[1]).lower(), "🎮 " + g[1]), callback_data=f"cgsite:{g[0]}")] for g in games]
+    rows.append([InlineKeyboardButton(text="↩️ QUAY LẠI", callback_data="order:open")])
+    await call.message.edit_text("🎮 <b>DANH MỤC CODE GAME</b>\n\nVui lòng chọn game:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await call.answer()
+
+
+@dp.callback_query(F.data == "order:open")
+async def order_open_root(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await call.message.edit_text("📦 <b>ĐẶT ĐƠN</b>\n\nVui lòng chọn danh mục:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=ORDER_UI_CACHE["km_share"], callback_data="order:kmshare")],
+        [InlineKeyboardButton(text=ORDER_UI_CACHE["code_game"], callback_data="order:codegame")],
+        [InlineKeyboardButton(text="↩️ QUAY LẠI MENU", callback_data="home")]
+    ]))
+    await call.answer()
+
+
+@dp.callback_query(F.data.startswith("cgsite:"))
+async def codegame_choose(call: CallbackQuery, state: FSMContext):
+    try:
+        site_id = int(call.data.split(":")[1])
+    except (ValueError, IndexError):
+        return await call.answer("Game không hợp lệ.", show_alert=True)
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT id,name,product_code,price FROM sites WHERE id=? AND active=1 AND UPPER(name) IN ('RR88','MM88')", (site_id,))
+        site = await cur.fetchone()
+    if not site:
+        return await call.answer("Game hiện không hoạt động.", show_alert=True)
+    if int(site[3]) <= 0:
+        return await call.answer("Game chưa được QTV cấu hình giá. Vui lòng quay lại sau.", show_alert=True)
+    await state.clear()
+    await state.update_data(site_id=site[0], site_name=site[1], product_code=site[2], price=int(site[3]))
+    await state.set_state(CodeGameForm.account_name)
+    prompt = ORDER_UI_CACHE["code_game_name"].replace("{site_name}", esc(site[1]))
+    await call.message.edit_text(prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="↩️ QUAY LẠI CHỌN GAME", callback_data="order:codegame")],
+        [InlineKeyboardButton(text="🏠 MENU CHÍNH", callback_data="home")]
+    ]))
+    await call.answer()
+
+
+@dp.message(CodeGameForm.account_name)
+async def codegame_account(message: Message, state: FSMContext):
+    name = (message.text or "").strip()
+    if len(name) < 2 or len(name) > 64:
+        return await message.answer("⚠️ Tên tài khoản không hợp lệ. Vui lòng nhập lại.")
+    await state.update_data(account_name=name)
+    await state.set_state(CodeGameForm.stk_last4)
+    data = await state.get_data()
+    prompt = ORDER_UI_CACHE["code_game_stk"].replace("{site_name}", esc(data["site_name"]))
+    await message.answer(prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="↩️ QUAY LẠI NHẬP TÊN", callback_data="cgback:name")],
+        [InlineKeyboardButton(text="🏠 MENU CHÍNH", callback_data="home")]
+    ]))
+
+
+@dp.callback_query(F.data == "cgback:name")
+async def codegame_back_name(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    if not data.get("site_id"):
+        return await call.answer("Phiên đặt đơn đã hết hạn.", show_alert=True)
+    await state.set_state(CodeGameForm.account_name)
+    prompt = ORDER_UI_CACHE["code_game_name"].replace("{site_name}", esc(data["site_name"]))
+    await call.message.edit_text(prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="↩️ QUAY LẠI CHỌN GAME", callback_data="order:codegame")],
+        [InlineKeyboardButton(text="🏠 MENU CHÍNH", callback_data="home")]
+    ]))
+    await call.answer()
+
+
+@dp.message(CodeGameForm.stk_last4)
+async def codegame_stk(message: Message, state: FSMContext):
+    digits = re.sub(r"\D", "", message.text or "")
+    if len(digits) != 4:
+        return await message.answer("⚠️ Vui lòng nhập đúng 4 số cuối STK đã liên kết với game.")
+    await state.update_data(stk_last4=digits)
+    await state.set_state(CodeGameForm.confirm)
+    data = await state.get_data()
+    user = await get_user(message.from_user.id)
+    wallet = int(user["wallet"]) if user else 0
+    await message.answer(
+        "📋 <b>XÁC NHẬN ĐƠN CODE GAME</b>\n\n"
+        f"🎮 Game: <b>{esc(data['site_name'])}</b>\n"
+        f"👤 Tên tài khoản: <code>{esc(data['account_name'])}</code>\n"
+        f"🏦 4 số cuối STK: <code>{digits}</code>\n"
+        f"💰 Giá đơn: <b>{money(data['price'])}</b>\n"
+        f"👛 Số dư hiện tại: <b>{money(wallet)}</b>\n\n"
+        "Xác nhận thanh toán bằng số dư BOT?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=ORDER_UI_CACHE["confirm"], callback_data="cgconfirm")],
+            [InlineKeyboardButton(text="↩️ QUAY LẠI NHẬP STK", callback_data="cgback:stk")],
+            [InlineKeyboardButton(text="🏠 MENU CHÍNH", callback_data="home")]
+        ])
+    )
+
+
+@dp.callback_query(F.data == "cgback:stk")
+async def codegame_back_stk(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    if not data.get("account_name"):
+        return await call.answer("Vui lòng nhập lại tên tài khoản.", show_alert=True)
+    await state.set_state(CodeGameForm.stk_last4)
+    prompt = ORDER_UI_CACHE["code_game_stk"].replace("{site_name}", esc(data["site_name"]))
+    await call.message.edit_text(prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="↩️ QUAY LẠI NHẬP TÊN", callback_data="cgback:name")],
+        [InlineKeyboardButton(text="🏠 MENU CHÍNH", callback_data="home")]
+    ]))
+    await call.answer()
+
+
+@dp.callback_query(F.data == "cgconfirm")
+async def codegame_confirm(call: CallbackQuery, state: FSMContext):
+    if await state.get_state() != CodeGameForm.confirm.state:
+        return await call.answer("Phiên đặt đơn đã hết hạn.", show_alert=True)
+    data = await state.get_data()
+    price = int(data["price"])
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("BEGIN IMMEDIATE")
+        cur = await db.execute("SELECT wallet FROM users WHERE user_id=?", (call.from_user.id,))
+        wallet = await cur.fetchone()
+        cur = await db.execute("SELECT active,price FROM sites WHERE id=? AND UPPER(name) IN ('RR88','MM88')", (data["site_id"],))
+        site = await cur.fetchone()
+        if not wallet or wallet[0] < price or not site or not site[0] or int(site[1]) != price or price <= 0:
+            await db.rollback()
+            balance = int(wallet[0]) if wallet else 0
+            reason = "Số dư ví không đủ." if wallet and wallet[0] < price else "Game đã ngừng hoạt động hoặc giá đã thay đổi."
+            return await call.answer(reason + f" Số dư: {money(balance)}.", show_alert=True)
+        await db.execute("UPDATE users SET wallet=wallet-? WHERE user_id=? AND wallet>=?", (price, call.from_user.id, price))
+        cur = await db.execute(
+            "INSERT INTO orders(user_id,product,product_code,account_name,stk_last4,price,status,created_at,updated_at) VALUES(?,?,?,?,?,?,'pending',?,?)",
+            (call.from_user.id, "CODE GAME " + data["site_name"], data["product_code"], data["account_name"], data["stk_last4"], price, now_text(), now_text())
+        )
+        order_id = cur.lastrowid
+        await db.execute("INSERT INTO transactions(user_id,kind,amount,note,created_at,ref) VALUES(?,?,?,?,?,?)",
+            (call.from_user.id, "order_payment", -price, "Thanh toán đơn CODE GAME " + data["site_name"], now_text(), f"ORD-{order_id:06d}"))
+        await db.commit()
+    await state.clear()
+    completion = ORDER_UI_CACHE["code_game_complete"]
+    for token, replacement in {
+        "{site_name}": esc(data["site_name"]), "{order_id}": f"ORD-{order_id:06d}",
+        "{account_name}": esc(data["account_name"]), "{stk}": esc(data["stk_last4"]),
+        "{price}": money(price), "{status}": "ĐANG CHỜ XỬ LÝ"
+    }.items():
+        completion = completion.replace(token, replacement)
+    await call.message.edit_text(completion)
+    await call.message.answer("🏠 Chọn chức năng tiếp theo bên dưới.", reply_markup=main_kb(call.from_user.id))
+    for admin_id in ADMIN_IDS:
+        try:
+            await bot.send_message(admin_id,
+                f"🎮 <b>ĐƠN CODE GAME MỚI ORD-{order_id:06d}</b>\n"
+                f"User: <code>{call.from_user.id}</code>\nGame: <b>{esc(data['site_name'])}</b>\n"
+                f"Tài khoản: <code>{esc(data['account_name'])}</code>\n4 số cuối STK: <code>{esc(data['stk_last4'])}</code>\nGiá: {money(price)}",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔄 Đang xử lý", callback_data=f"ordproc:{order_id}")],
+                    [InlineKeyboardButton(text="✅ Hoàn thành", callback_data=f"orddone:{order_id}")],
+                    [InlineKeyboardButton(text="↩️ Hoàn tiền", callback_data=f"ordrefund:{order_id}")]
+                ]))
+        except Exception:
+            log.exception("Could not notify admin about CODE GAME order")
+    await call.answer("Đặt đơn CODE GAME thành công.")
 
 
 @dp.callback_query(F.data.startswith("site:"))
