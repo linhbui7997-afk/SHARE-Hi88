@@ -40,6 +40,7 @@ class MenuForm(StatesGroup):
     photo = State()
     rows = State()
     greeting = State()
+    greeting_photo = State()
 
 PERMISSIONS = [("bot.manage", "Quản lý Bot"), ("users.read", "Xem User"), ("users.manage", "Quản lý User"), ("orders.review", "Duyệt đơn"), ("deposits.review", "Duyệt nạp tiền"), ("wallet.adjust", "Điều chỉnh ví"), ("notifications.send", "Gửi thông báo"), ("reports.read", "Xem thống kê"), ("settings.manage", "Cài đặt hệ thống"), ("admins.manage", "Quản lý Admin"), ("database.backup", "Sao lưu Database"), ("maintenance.manage", "Bảo trì"), ("orders.buttons.edit", "Chỉnh sửa nút & nội dung đặt đơn"), ("main.menu.edit", "Quản lý Menu chính")]
 
@@ -61,7 +62,7 @@ async def safe_edit(message, text, *, reply_markup=None):
         raise
 
 
-def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, now_text, esc, admin_keyboard, sync_command_menus, clear_admin_command_menu, on_order_ui_update=None, on_main_menu_update=None, on_start_greeting_update=None):
+def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, now_text, esc, admin_keyboard, sync_command_menus, clear_admin_command_menu, on_order_ui_update=None, on_main_menu_update=None, on_start_greeting_update=None, on_start_greeting_photo_update=None):
     async def allowed(call):
         uid = call.from_user.id
         if uid not in admin_ids:
@@ -1028,23 +1029,97 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
     async def bs_menu_greeting(call: CallbackQuery, state: FSMContext):
         if not await allowed(call): return
         _, _, greeting = await menu_load()
+        async with aiosqlite.connect(db_path) as db:
+            cur = await db.execute("SELECT value FROM settings WHERE key='start_greeting_photo'")
+            row = await cur.fetchone()
+        photo_status = "Đã có ảnh" if row and row[0] else "Chưa có ảnh"
         await state.clear()
         await state.set_state(MenuForm.greeting)
-        await safe_edit(call.message, "👋 <b>LỜI CHÀO /START</b>\nNội dung hiện tại:\n" + esc(greeting) + "\n\nGửi lời chào mới. Có thể dùng {username} và {id}.")
+        await safe_edit(
+            call.message,
+            "👋 <b>LỜI CHÀO /START</b>\\n\\n"
+            "<b>Nội dung hiện tại:</b>\\n" + esc(greeting) +
+            "\\n\\n🖼 Ảnh: " + photo_status +
+            "\\n\\nGửi lời chào mới. Có thể dùng {username} và {id}. "
+            "Sau đó gửi ảnh hoặc chọn bỏ qua / xóa ảnh."
+        )
         await call.answer()
 
     @dp.message(MenuForm.greeting)
-    async def menu_greeting_save(message: Message, state: FSMContext):
+    async def menu_greeting_text(message: Message, state: FSMContext):
         if message.from_user.id not in admin_ids: return
         value = (message.text or "").strip()
-        if not value or len(value) > 1000: return await message.answer("Lời chào tối đa 1.000 ký tự.")
+        if not value or len(value) > 1000:
+            return await message.answer("Lời chào phải có nội dung và tối đa 1.000 ký tự. Hãy gửi lại.")
+        async with aiosqlite.connect(db_path) as db:
+            cur = await db.execute("SELECT value FROM settings WHERE key='start_greeting_photo'")
+            row = await cur.fetchone()
+        await state.update_data(greeting_pending_text=value, greeting_pending_photo=(row[0] if row else ""))
+        await state.set_state(MenuForm.greeting_photo)
+        await message.answer(
+            "🖼️ <b>THÊM ẢNH CHO /START (TÙY CHỌN)</b>\\n\\n"
+            "Gửi ảnh muốn hiển thị cùng lời chào.\\n"
+            "Gửi <code>-</code> để giữ ảnh hiện tại hoặc <code>/remove</code> để xóa ảnh."
+        )
+
+    @dp.message(MenuForm.greeting_photo)
+    async def menu_greeting_photo(message: Message, state: FSMContext):
+        if message.from_user.id not in admin_ids: return
+        data = await state.get_data()
+        photo = data.get("greeting_pending_photo", "")
+        if message.photo:
+            photo = message.photo[-1].file_id
+        else:
+            choice = (message.text or "").strip()
+            if choice == "/remove":
+                photo = ""
+            elif choice == "-":
+                pass
+            else:
+                return await message.answer("Gửi ảnh, dấu <code>-</code> để giữ ảnh hiện tại hoặc <code>/remove</code> để xóa ảnh.")
+        await state.update_data(greeting_pending_photo=photo)
+        preview_text = data.get("greeting_pending_text", "")
+        if photo:
+            await message.answer_photo(photo, caption="🖼️ <b>ẢNH XEM TRƯỚC LỜI CHÀO /START</b>")
+        await message.answer(
+            "🔎 <b>XEM TRƯỚC LỜI CHÀO /START</b>\\n\\n" + esc(preview_text) +
+            "\\n\\n🖼 Ảnh: " + ("Đã chọn" if photo else "Không sử dụng") +
+            "\\n\\nXác nhận lưu cấu hình này?",
+            reply_markup=_kb([
+                [("✅ XÁC NHẬN LƯU", "bs:menu:greeting:save")],
+                [("❌ HỦY", "bs:menu:greeting:cancel")]
+            ])
+        )
+
+    @dp.callback_query(F.data == "bs:menu:greeting:save")
+    async def menu_greeting_confirm(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        data = await state.get_data()
+        value = data.get("greeting_pending_text")
+        photo = data.get("greeting_pending_photo", "")
+        if not value:
+            return await call.answer("Không có nội dung chờ lưu.", show_alert=True)
         async with aiosqlite.connect(db_path) as db:
             await db.execute("INSERT INTO settings(key,value) VALUES('start_greeting',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (value,))
+            await db.execute("INSERT INTO settings(key,value) VALUES('start_greeting_photo',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (photo,))
             await db.commit()
         if on_start_greeting_update: on_start_greeting_update(value)
-        await audit(message.from_user.id, "edit_start_greeting")
+        if on_start_greeting_photo_update: on_start_greeting_photo_update(photo)
+        await audit(call.from_user.id, "edit_start_greeting", "start", "photo=" + ("yes" if photo else "no"))
         await state.clear()
-        await message.answer("✅ Đã cập nhật lời chào /start.", reply_markup=_kb([[("🧩 QUẢN LÝ MENU CHÍNH", "bs:menu")]]))
+        await safe_edit(
+            call.message,
+            "✅ <b>ĐÃ LƯU LỜI CHÀO /START</b>\\nVăn bản và ảnh đã được cập nhật.",
+            reply_markup=_kb([ [("🧩 QUẢN LÝ MENU CHÍNH", "bs:menu")] ])
+        )
+        await call.answer("Đã lưu.")
+
+    @dp.callback_query(F.data == "bs:menu:greeting:cancel")
+    async def menu_greeting_cancel(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        await state.clear()
+        await safe_edit(call.message, "❌ Đã hủy. Lời chào /start cũ vẫn được giữ nguyên.", reply_markup=_kb([ [("🧩 QUẢN LÝ MENU CHÍNH", "bs:menu")] ]))
+        await call.answer("Đã hủy.")
 
 
 
