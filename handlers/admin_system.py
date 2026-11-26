@@ -1290,7 +1290,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await state.clear()
         await state.update_data(order_ui_rename_key=key)
         await state.set_state(OrderUiForm.edit_label)
-        await safe_edit(call.message, f"✏️ <b>ĐỔI TÊN MENU</b>\n\nMã [{key}] sẽ được giữ nguyên. Gửi tên mới cho menu:")
+        await safe_edit(call.message, f"✏️ <b>ĐỔI TÊN MENU</b>\n\nMã [{key}] sẽ được giữ nguyên. Gửi tên mới cho menu:", reply_markup=_kb([[("❌ HỦY", "bs:orderui:cancel")]]))
         await call.answer()
 
     @dp.message(OrderUiForm.edit_label)
@@ -1311,12 +1311,19 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await message.answer(f"✅ Đã đổi tên thành <b>{esc(label)}</b>. Mã nội bộ <code>[{key}]</code> được giữ nguyên.",
             reply_markup=_kb([[("🧩 QUẢN LÝ NÚT & NỘI DUNG ĐẶT ĐƠN", "bs:orderui")]]))
 
+    @dp.callback_query(F.data == "bs:orderui:cancel")
+    async def bs_orderui_cancel(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        await state.clear()
+        await bs_orderui(call, state)
+        await call.answer("Đã hủy thao tác, không lưu thay đổi.")
+
     @dp.callback_query(F.data == "bs:orderui:add")
     async def bs_orderui_add(call: CallbackQuery, state: FSMContext):
         if not await allowed(call): return
         await state.clear()
         await state.set_state(OrderUiForm.label)
-        await safe_edit(call.message, "➕ <b>THÊM NÚT MỚI VÀO LUỒNG ĐẶT ĐƠN</b>\n\nGửi tên nút / tên bước mới. Hệ thống tự tạo mã nội bộ riêng. Mã không hiển thị cho khách.")
+        await safe_edit(call.message, "➕ <b>THÊM NÚT MỚI VÀO LUỒNG ĐẶT ĐƠN</b>\n\nGửi tên nút / tên bước mới. Hệ thống tự tạo mã nội bộ riêng. Mã không hiển thị cho khách.", reply_markup=_kb([[("❌ HỦY", "bs:orderui:cancel")]]))
         await call.answer()
 
     @dp.message(OrderUiForm.label)
@@ -1331,7 +1338,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await orderui_save_custom_items(items)
         await state.update_data(order_ui_key=key)
         await state.set_state(OrderUiForm.value)
-        await message.answer(f"✅ Đã tạo mã nội bộ <code>[{key}]</code> cho <b>{esc(label)}</b>.\n\nGửi nội dung mặc định cho bước này để xem trước và xác nhận lưu.")
+        await message.answer(f"✅ Đã tạo mã nội bộ <code>[{key}]</code> cho <b>{esc(label)}</b>.\n\nGửi nội dung mặc định cho bước này để xem trước và xác nhận lưu.", reply_markup=_kb([[("❌ HỦY", "bs:orderui:cancel")]]))
 
     @dp.callback_query(F.data.startswith("bs:orderui:item:"))
     async def bs_orderui_item(call: CallbackQuery, state: FSMContext):
@@ -1353,7 +1360,7 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         await state.set_state(OrderUiForm.value)
         await safe_edit(call.message, 
             f"✏️ <b>SỬA {esc(label)}</b>\n\nNội dung hiện tại:\n<code>{esc(current[:1200])}</code>\n\nGửi nội dung mới. Có thể dùng xuống dòng. Với [complete], có thể dùng biến: {{site_name}}, {{product_code}}, {{order_id}}, {{account_name}}, {{stk}}, {{price}}, {{status}}.",
-            reply_markup=_kb([[("♻️ KHÔI PHỤC MẶC ĐỊNH", f"bs:orderui:reset:{key}")], [("↩️ DANH SÁCH", "bs:orderui")]])
+            reply_markup=_kb([[("♻️ KHÔI PHỤC MẶC ĐỊNH", f"bs:orderui:reset:{key}")], [("❌ HỦY", "bs:orderui:cancel")]])
         )
         await call.answer()
 
