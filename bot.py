@@ -252,7 +252,7 @@ def main_kb(user_id=None):
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True, input_field_placeholder="Chọn chức năng bạn muốn sử dụng")
 
 def back_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=ORDER_UI_CACHE["code_game_back_home"], callback_data="home")]])
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ QUAY LẠI MENU", callback_data="home")]])
 
 
 def admin_kb():
