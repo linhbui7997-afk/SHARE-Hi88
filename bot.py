@@ -45,7 +45,7 @@ SEPAY_QR_TEMPLATE = os.getenv("SEPAY_QR_TEMPLATE", "compact2")
 ORDER_ANNOUNCE_CHANNEL = os.getenv("ORDER_ANNOUNCE_CHANNEL", "@sharegame1")
 SEPAY_PREFIX = re.sub(r"[^A-Z0-9]", "", os.getenv("SEPAY_CODE_PREFIX", "SH").upper())[:5] or "SH"
 TZ = ZoneInfo("Asia/Ho_Chi_Minh")
-ORDER_UI_DEFAULTS = {"hot":"📦 ĐẶT ĐƠN","code_game":"🎮 CODE GAME","km_share":"🎁 KM SHARE","rr88":"🎮 RR88","mm88":"🎮 MM88","code_game_name":"👤 Vui lòng nhập tên tài khoản {site_name}:","code_game_stk":"🏦 Vui lòng nhập đúng 4 số cuối STK đã liên kết với game {site_name}:","code_game_complete":"🎉 <b>ĐẶT ĐƠN CODE GAME THÀNH CÔNG</b>\n\n🧾 Mã đơn: <code>{order_id}</code>\n🎮 Game: <b>{site_name}</b>\n👤 Tài khoản: <code>{account_name}</code>\n🏦 4 số cuối STK: <code>{stk}</code>\n💰 Đã thanh toán: <b>{price}</b>\n⏳ Trạng thái: <b>{status}</b>","code_game_back":"↩️ QUAY LẠI","code_game_back_home":"↩️ QUAY LẠI MENU","code_game_back_game":"↩️ QUAY LẠI CHỌN GAME","code_game_back_name":"↩️ QUAY LẠI NHẬP TÊN","code_game_back_stk":"↩️ QUAY LẠI NHẬP STK","code_game_home":"🏠 MENU CHÍNH","hi88":"🎁 SHARE Hi88","qq88":"🎁 SHARE QQ88","hi88_name":"👤 Vui lòng nhập tên tài khoản Hi88:","hi88_stk":"🏦 Nhập đúng 4 số cuối STK ngân hàng đã liên kết với tài khoản Hi88:","qq88_name":"👤 Vui lòng nhập tên tài khoản QQ88:","qq88_stk":"🏦 Nhập đúng 6 số cuối STK ngân hàng đã liên kết với tài khoản QQ88:","confirm":"✅ XÁC NHẬN THANH TOÁN","complete":"🎉 <b>ĐẶT ĐƠN THÀNH CÔNG</b>\n\n━━━━━━━━━━━━━━━━━━\n✅ Thanh toán đơn hàng thành công!\n\n🎁 Sản phẩm: <b>SHARE {site_name}</b>\n🎟 Gói khuyến mãi: <b>{product_code} điểm</b>\n🧾 Mã đơn: <code>{order_id}</code>\n👤 Tài khoản: <code>{account_name}</code>\n🏦 {digits} số cuối STK: <code>{stk}</code>\n💰 Đã thanh toán: <b>{price}</b>\n⏳ Trạng thái: <b>{status}</b>\n━━━━━━━━━━━━━━━━━━\n\n📢 Đơn hàng đã được gửi đến quản trị viên. Vui lòng chờ thông báo khi đơn được xử lý hoàn tất."}
+ORDER_UI_DEFAULTS = {"hot":"📦 ĐẶT ĐƠN","code_game":"🎮 CODE GAME","code_game_title":"🎮 DANH MỤC CODE GAME","code_game_content":"Vui lòng chọn game và nhập chính xác thông tin tài khoản đã liên kết.","code_game_step_1":"🎮 <b>BƯỚC 1 — CHỌN GAME</b>\\n\\nVui lòng chọn game:","code_game_step_2":"👤 Vui lòng nhập tên tài khoản {site_name}:","code_game_step_3":"🏦 Vui lòng nhập đúng 4 số cuối STK đã liên kết với game {site_name}:","code_game_step_4":"📋 <b>XÁC NHẬN ĐƠN CODE GAME</b>\\n\\n🎮 Game: <b>{site_name}</b>\\n👤 Tài khoản: <code>{account_name}</code>\\n🏦 4 số cuối STK: <code>{stk}</code>\\n💰 Giá đơn: <b>{price}</b>\\n\\nXác nhận thanh toán bằng số dư BOT?","code_game_step_5":"Đơn hàng đã được ghi nhận và cập nhật lịch sử giao dịch.","km_share":"🎁 KM SHARE","rr88":"🎮 RR88","mm88":"🎮 MM88","code_game_name":"👤 Vui lòng nhập tên tài khoản {site_name}:","code_game_stk":"🏦 Vui lòng nhập đúng 4 số cuối STK đã liên kết với game {site_name}:","code_game_complete":"🎉 <b>ĐẶT ĐƠN CODE GAME THÀNH CÔNG</b>\n\n🧾 Mã đơn: <code>{order_id}</code>\n🎮 Game: <b>{site_name}</b>\n👤 Tài khoản: <code>{account_name}</code>\n🏦 4 số cuối STK: <code>{stk}</code>\n💰 Đã thanh toán: <b>{price}</b>\n⏳ Trạng thái: <b>{status}</b>","code_game_back":"↩️ QUAY LẠI","code_game_back_home":"↩️ QUAY LẠI MENU","code_game_back_game":"↩️ QUAY LẠI CHỌN GAME","code_game_back_name":"↩️ QUAY LẠI NHẬP TÊN","code_game_back_stk":"↩️ QUAY LẠI NHẬP STK","code_game_home":"🏠 MENU CHÍNH","hi88":"🎁 SHARE Hi88","qq88":"🎁 SHARE QQ88","hi88_name":"👤 Vui lòng nhập tên tài khoản Hi88:","hi88_stk":"🏦 Nhập đúng 4 số cuối STK ngân hàng đã liên kết với tài khoản Hi88:","qq88_name":"👤 Vui lòng nhập tên tài khoản QQ88:","qq88_stk":"🏦 Nhập đúng 6 số cuối STK ngân hàng đã liên kết với tài khoản QQ88:","confirm":"✅ XÁC NHẬN THANH TOÁN","complete":"🎉 <b>ĐẶT ĐƠN THÀNH CÔNG</b>\n\n━━━━━━━━━━━━━━━━━━\n✅ Thanh toán đơn hàng thành công!\n\n🎁 Sản phẩm: <b>SHARE {site_name}</b>\n🎟 Gói khuyến mãi: <b>{product_code} điểm</b>\n🧾 Mã đơn: <code>{order_id}</code>\n👤 Tài khoản: <code>{account_name}</code>\n🏦 {digits} số cuối STK: <code>{stk}</code>\n💰 Đã thanh toán: <b>{price}</b>\n⏳ Trạng thái: <b>{status}</b>\n━━━━━━━━━━━━━━━━━━\n\n📢 Đơn hàng đã được gửi đến quản trị viên. Vui lòng chờ thông báo khi đơn được xử lý hoàn tất."}
 ORDER_UI_CACHE = dict(ORDER_UI_DEFAULTS)
 MAIN_MENU_DEFAULTS = [
     {"id":"hot","label":"📦 ĐẶT ĐƠN","enabled":True,"locked":True,"action":"hot","content":"","url":"","photo":""},
@@ -586,7 +586,7 @@ async def order_open_codegame(call: CallbackQuery, state: FSMContext):
         return await call.answer("CODE GAME hiện chưa có game hoạt động.", show_alert=True)
     rows = [[InlineKeyboardButton(text=ORDER_UI_CACHE.get(str(g[1]).lower(), "🎮 " + g[1]), callback_data=f"cgsite:{g[0]}")] for g in games]
     rows.append([InlineKeyboardButton(text=ORDER_UI_CACHE["code_game_back"], callback_data="order:open")])
-    await call.message.edit_text("🎮 <b>DANH MỤC CODE GAME</b>\n\nVui lòng chọn game:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await call.message.edit_text(ORDER_UI_CACHE["code_game_title"] + "\n\n" + ORDER_UI_CACHE["code_game_content"] + "\n\n" + ORDER_UI_CACHE["code_game_step_1"], reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
     await call.answer()
 
 
@@ -617,7 +617,7 @@ async def codegame_choose(call: CallbackQuery, state: FSMContext):
     await state.clear()
     await state.update_data(site_id=site[0], site_name=site[1], product_code=site[2], price=int(site[3]))
     await state.set_state(CodeGameForm.account_name)
-    prompt = ORDER_UI_CACHE["code_game_name"].replace("{site_name}", esc(site[1]))
+    prompt = ORDER_UI_CACHE["code_game_step_2"].replace("{site_name}", esc(site[1]))
     await call.message.edit_text(prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=ORDER_UI_CACHE["code_game_back_game"], callback_data="order:codegame")],
         [InlineKeyboardButton(text=ORDER_UI_CACHE["code_game_home"], callback_data="home")]
@@ -633,7 +633,7 @@ async def codegame_account(message: Message, state: FSMContext):
     await state.update_data(account_name=name)
     await state.set_state(CodeGameForm.stk_last4)
     data = await state.get_data()
-    prompt = ORDER_UI_CACHE["code_game_stk"].replace("{site_name}", esc(data["site_name"]))
+    prompt = ORDER_UI_CACHE["code_game_step_3"].replace("{site_name}", esc(data["site_name"]))
     await message.answer(prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=ORDER_UI_CACHE["code_game_back_name"], callback_data="cgback:name")],
         [InlineKeyboardButton(text="🏠 MENU CHÍNH", callback_data="home")]
@@ -646,7 +646,7 @@ async def codegame_back_name(call: CallbackQuery, state: FSMContext):
     if not data.get("site_id"):
         return await call.answer("Phiên đặt đơn đã hết hạn.", show_alert=True)
     await state.set_state(CodeGameForm.account_name)
-    prompt = ORDER_UI_CACHE["code_game_name"].replace("{site_name}", esc(data["site_name"]))
+    prompt = ORDER_UI_CACHE["code_game_step_2"].replace("{site_name}", esc(data["site_name"]))
     await call.message.edit_text(prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="↩️ QUAY LẠI CHỌN GAME", callback_data="order:codegame")],
         [InlineKeyboardButton(text="🏠 MENU CHÍNH", callback_data="home")]
@@ -665,13 +665,7 @@ async def codegame_stk(message: Message, state: FSMContext):
     user = await get_user(message.from_user.id)
     wallet = int(user["wallet"]) if user else 0
     await message.answer(
-        "📋 <b>XÁC NHẬN ĐƠN CODE GAME</b>\n\n"
-        f"🎮 Game: <b>{esc(data['site_name'])}</b>\n"
-        f"👤 Tên tài khoản: <code>{esc(data['account_name'])}</code>\n"
-        f"🏦 4 số cuối STK: <code>{digits}</code>\n"
-        f"💰 Giá đơn: <b>{money(data['price'])}</b>\n"
-        f"👛 Số dư hiện tại: <b>{money(wallet)}</b>\n\n"
-        "Xác nhận thanh toán bằng số dư BOT?",
+ORDER_UI_CACHE["code_game_step_4"].replace("{site_name}", esc(data["site_name"])).replace("{account_name}", esc(data["account_name"])).replace("{stk}", digits).replace("{price}", money(data["price"])) + "\n\n" + f"👛 Số dư hiện tại: <b>{money(wallet)}</b>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=ORDER_UI_CACHE["confirm"], callback_data="cgconfirm")],
             [InlineKeyboardButton(text=ORDER_UI_CACHE["code_game_back_stk"], callback_data="cgback:stk")],
@@ -686,7 +680,7 @@ async def codegame_back_stk(call: CallbackQuery, state: FSMContext):
     if not data.get("account_name"):
         return await call.answer("Vui lòng nhập lại tên tài khoản.", show_alert=True)
     await state.set_state(CodeGameForm.stk_last4)
-    prompt = ORDER_UI_CACHE["code_game_stk"].replace("{site_name}", esc(data["site_name"]))
+    prompt = ORDER_UI_CACHE["code_game_step_3"].replace("{site_name}", esc(data["site_name"]))
     await call.message.edit_text(prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="↩️ QUAY LẠI NHẬP TÊN", callback_data="cgback:name")],
         [InlineKeyboardButton(text="🏠 MENU CHÍNH", callback_data="home")]
@@ -721,7 +715,7 @@ async def codegame_confirm(call: CallbackQuery, state: FSMContext):
             (call.from_user.id, "order_payment", -price, "Thanh toán đơn CODE GAME " + data["site_name"], now_text(), f"ORD-{order_id:06d}"))
         await db.commit()
     await state.clear()
-    completion = ORDER_UI_CACHE["code_game_complete"]
+    completion = ORDER_UI_CACHE["code_game_complete"] + "\n\n" + ORDER_UI_CACHE["code_game_step_5"]
     for token, replacement in {
         "{site_name}": esc(data["site_name"]), "{order_id}": f"ORD-{order_id:06d}",
         "{account_name}": esc(data["account_name"]), "{stk}": esc(data["stk_last4"]),
