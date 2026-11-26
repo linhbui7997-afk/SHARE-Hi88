@@ -1128,6 +1128,13 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
     ORDER_UI_ITEMS = {
         "hot": ("[hot] • Nút ĐẶT ĐƠN", "📦 ĐẶT ĐƠN"),
         "code_game": ("[code_game] • Nút CODE GAME", "🎮 CODE GAME"),
+        "code_game_title": ("[code_game_title] • Tiêu đề CODE GAME", "🎮 DANH MỤC CODE GAME"),
+        "code_game_content": ("[code_game_content] • Nội dung hướng dẫn CODE GAME", "Vui lòng chọn game và nhập chính xác thông tin tài khoản đã liên kết."),
+        "code_game_step_1": ("[code_game_step_1] • Bước 1 chọn game", "🎮 BƯỚC 1 — CHỌN GAME\\n\\nVui lòng chọn game:"),
+        "code_game_step_2": ("[code_game_step_2] • Bước 2 nhập tên tài khoản", "👤 Vui lòng nhập tên tài khoản {site_name}:"),
+        "code_game_step_3": ("[code_game_step_3] • Bước 3 nhập 4 số cuối STK", "🏦 Vui lòng nhập đúng 4 số cuối STK đã liên kết với game {site_name}:"),
+        "code_game_step_4": ("[code_game_step_4] • Bước 4 xác nhận đơn", "📋 XÁC NHẬN ĐƠN CODE GAME\\n\\n🎮 Game: {site_name}\\n👤 Tài khoản: {account_name}\\n🏦 4 số cuối STK: {stk}\\n💰 Giá đơn: {price}\\n\\nXác nhận thanh toán bằng số dư BOT?"),
+        "code_game_step_5": ("[code_game_step_5] • Bước 5 hoàn tất", "Đơn hàng đã được ghi nhận và cập nhật lịch sử giao dịch."),
         "km_share": ("[km_share] • Nút KM SHARE", "🎁 KM SHARE"),
         "rr88": ("[rr88] • Nút RR88", "🎮 RR88"),
         "mm88": ("[mm88] • Nút MM88", "🎮 MM88"),
