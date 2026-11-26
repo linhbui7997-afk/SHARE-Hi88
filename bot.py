@@ -59,6 +59,7 @@ MAIN_MENU_DEFAULTS = [
 MAIN_MENU_CACHE = [dict(x) for x in MAIN_MENU_DEFAULTS]
 MAIN_MENU_ROWS = 2
 START_GREETING_CACHE = "Xin chào! Chào mừng bạn đến với SHARE-Hi88."
+START_GREETING_PHOTO_CACHE = ""
 
 if not BOT_TOKEN:
     raise RuntimeError("Missing BOT_TOKEN environment variable")
@@ -84,7 +85,7 @@ def esc(value):
 
 
 async def init_db():
-    global MAIN_MENU_ROWS, START_GREETING_CACHE
+    global MAIN_MENU_ROWS, START_GREETING_CACHE, START_GREETING_PHOTO_CACHE
     os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript("""
@@ -165,6 +166,9 @@ async def init_db():
         cur = await db.execute("SELECT value FROM settings WHERE key='start_greeting'")
         saved_greeting = await cur.fetchone()
         if saved_greeting: START_GREETING_CACHE = saved_greeting[0]
+        cur = await db.execute("SELECT value FROM settings WHERE key='start_greeting_photo'")
+        saved_greeting_photo = await cur.fetchone()
+        if saved_greeting_photo: START_GREETING_PHOTO_CACHE = saved_greeting_photo[0]
         cur = await db.execute("SELECT key,value FROM settings WHERE key LIKE 'order_ui_%'")
         for key, value in await cur.fetchall():
             tag = key.removeprefix("order_ui_")
@@ -339,6 +343,11 @@ async def home_text(user):
 
 async def show_home(target, user):
     text = await home_text(user)
+    if START_GREETING_PHOTO_CACHE:
+        if isinstance(target, CallbackQuery):
+            await target.message.answer_photo(START_GREETING_PHOTO_CACHE)
+        else:
+            await target.answer_photo(START_GREETING_PHOTO_CACHE)
     if isinstance(target, CallbackQuery):
         await target.message.answer(text, reply_markup=main_kb(user.id))
         await target.answer()
@@ -1856,6 +1865,7 @@ open_beni_system = register_system_admin(
     on_order_ui_update=lambda key, value: ORDER_UI_CACHE.__setitem__(key, value),
     on_main_menu_update=lambda items, rows: (MAIN_MENU_CACHE.__setitem__(slice(None), items), globals().__setitem__("MAIN_MENU_ROWS", rows), ORDER_UI_CACHE.__setitem__("hot", next((x.get("label") for x in items if x.get("id") == "hot"), ORDER_UI_CACHE["hot"]))),
     on_start_greeting_update=lambda value: globals().__setitem__("START_GREETING_CACHE", value),
+    on_start_greeting_photo_update=lambda value: globals().__setitem__("START_GREETING_PHOTO_CACHE", value),
 )
 
 
