@@ -1125,7 +1125,14 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
 
 
     ORDER_UI_ITEMS = {
-        "hot": ("[hot] • Nút ĐẶT KM SHARE", "🎁 ĐẶT ĐƠN KM SHARE"),
+        "hot": ("[hot] • Nút ĐẶT ĐƠN", "📦 ĐẶT ĐƠN"),
+        "code_game": ("[code_game] • Nút CODE GAME", "🎮 CODE GAME"),
+        "km_share": ("[km_share] • Nút KM SHARE", "🎁 KM SHARE"),
+        "rr88": ("[rr88] • Nút RR88", "🎮 RR88"),
+        "mm88": ("[mm88] • Nút MM88", "🎮 MM88"),
+        "code_game_name": ("[code_game_name] • Nội dung nhập tên tài khoản CODE GAME", "👤 Vui lòng nhập tên tài khoản {site_name}:"),
+        "code_game_stk": ("[code_game_stk] • Nội dung nhập 4 số cuối STK CODE GAME", "🏦 Vui lòng nhập đúng 4 số cuối STK đã liên kết với game {site_name}:"),
+        "code_game_complete": ("[code_game_complete] • Nội dung hoàn tất CODE GAME", "🎉 <b>ĐẶT ĐƠN CODE GAME THÀNH CÔNG</b>\n\n🧾 Mã đơn: <code>{order_id}</code>\n🎮 Game: <b>{site_name}</b>\n👤 Tài khoản: <code>{account_name}</code>\n🏦 4 số cuối STK: <code>{stk}</code>\n💰 Đã thanh toán: <b>{price}</b>\n⏳ Trạng thái: <b>{status}</b>"),
         "hi88": ("[hi88] • Nút SHARE Hi88", "🎁 SHARE Hi88"),
         "qq88": ("[qq88] • Nút SHARE QQ88", "🎁 SHARE QQ88"),
         "hi88_name": ("[hi88_name] • Mời nhập username Hi88", "👤 Vui lòng nhập tên tài khoản Hi88:"),
