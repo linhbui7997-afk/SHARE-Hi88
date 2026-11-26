@@ -1154,7 +1154,18 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
         "qq88_name": ("[qq88_name] • Mời nhập username QQ88", "👤 Vui lòng nhập tên tài khoản QQ88:"),
         "qq88_stk": ("[qq88_stk] • Mời nhập STK QQ88", "🏦 Nhập đúng 6 số cuối STK ngân hàng đã liên kết với tài khoản QQ88:"),
         "confirm": ("[confirm] • Nút xác nhận đơn", "✅ XÁC NHẬN THANH TOÁN"),
-        "complete": ("[complete] • Nội dung hoàn tất đơn", "🎉 <b>ĐẶT ĐƠN THÀNH CÔNG</b>\n\n🎁 Sản phẩm: <b>SHARE {site_name}</b>\n🎟 Gói: <b>{product_code} điểm</b>\n🧾 Mã đơn: <code>{order_id}</code>\n👤 Tài khoản: <code>{account_name}</code>\n🏦 {digits} số cuối STK: <code>{stk}</code>\n💰 Đã thanh toán: <b>{price}</b>\n⏳ Trạng thái: <b>{status}</b>")
+        "complete": ("[complete] • Nội dung hoàn tất đơn", "🎉 <b>ĐẶT ĐƠN THÀNH CÔNG</b>\n\n🎁 Sản phẩm: <b>SHARE {site_name}</b>\n🎟 Gói: <b>{product_code} điểm</b>\n🧾 Mã đơn: <code>{order_id}</code>\n👤 Tài khoản: <code>{account_name}</code>\n🏦 {digits} số cuối STK: <code>{stk}</code>\n💰 Đã thanh toán: <b>{price}</b>\n⏳ Trạng thái: <b>{status}</b>"),
+        "km_share_title": ("[km_share_title] • Tiêu đề sản phẩm KM SHARE", "🎁 DANH MỤC KHUYẾN MÃI SHARE"),
+        "km_share_content": ("[km_share_content] • Nội dung giới thiệu KM SHARE", "Vui lòng chọn chương trình khuyến mãi và nhập chính xác thông tin tài khoản."),
+        "km_share_price": ("[km_share_price] • Giá sản phẩm KM SHARE", "50000"),
+        "km_share_condition": ("[km_share_condition] • Điều kiện nhận KM SHARE", "Không lạm dụng khuyến mãi; tổng nạp trên 500.000đ và có ít nhất 3 lần nạp."),
+        "km_share_image": ("[km_share_image] • File ID ảnh KM SHARE", ""),
+        "km_share_button": ("[km_share_button] • Tên nút đặt đơn KM SHARE", "🛒 ĐẶT KM SHARE"),
+        "km_share_success": ("[km_share_success] • Nội dung hoàn tất KM SHARE", "Đơn hàng đã được ghi nhận. Vui lòng chờ quản trị viên xử lý."),
+        "km_share_status": ("[km_share_status] • Trạng thái KM SHARE (on/off)", "on"),
+        "code_game_price": ("[code_game_price] • Giá mặc định CODE GAME", "0"),
+        "code_game_status": ("[code_game_status] • Trạng thái danh mục CODE GAME (on/off)", "on"),
+        "code_game_success": ("[code_game_success] • Nội dung hoàn tất CODE GAME", "Đơn hàng CODE GAME đã được ghi nhận và cập nhật lịch sử giao dịch.")
     }
 
     async def orderui_custom_items():
@@ -1176,40 +1187,40 @@ def register_system_admin(dp, *, db_path, main_admin_id, admin_ids, timezone, no
     async def bs_orderui(call: CallbackQuery, state: FSMContext):
         if not await allowed(call): return
         await state.clear()
+        await show(call, "🧩 <b>QUẢN LÝ NÚT & NỘI DUNG ĐẶT ĐƠN</b>",
+            "Chọn danh mục cần cấu hình. Mã trong [ngoặc vuông] là mã nội bộ, không hiển thị với khách. Mỗi mục có thể mở để chỉnh sửa, xem trước và xác nhận lưu.",
+            [[("🎁 CẤU HÌNH KM SHARE", "bs:orderui:group:kmshare")],
+             [("🎮 CẤU HÌNH CODE GAME", "bs:orderui:group:codegame")],
+             [("🧩 NÚT & NỘI DUNG CHUNG", "bs:orderui:group:common")],
+             [("➕ THÊM MỤC TỰ ĐỊNH NGHĨA", "bs:orderui:add")],
+             [("↩️ QUAY LẠI BENI SYSTEM", "bs:home")]])
+
+    @dp.callback_query(F.data.startswith("bs:orderui:group:"))
+    async def bs_orderui_group(call: CallbackQuery, state: FSMContext):
+        if not await allowed(call): return
+        group = call.data.rsplit(":", 1)[-1]
+        if group not in ("kmshare", "codegame", "common"):
+            return await call.answer("Danh mục không hợp lệ.", show_alert=True)
+        await state.clear()
+        prefixes = {"kmshare": ("km_share_",), "codegame": ("code_game_", "rr88", "mm88"), "common": ("hot", "km_share", "hi88", "qq88", "confirm", "complete")}
         rows = []
         async with aiosqlite.connect(db_path) as db:
             for key, (label, default) in ORDER_UI_ITEMS.items():
+                if not any(key.startswith(prefix) for prefix in prefixes[group]): continue
                 cur = await db.execute("SELECT value FROM settings WHERE key=?", ("order_ui_" + key,))
                 saved = await cur.fetchone()
                 status = "📝 ĐÃ TÙY CHỈNH" if saved else "⚪ MẶC ĐỊNH"
-                rows.append([(f"🔒 {label} · {status}", f"bs:orderui:item:{key}")])
+                rows.append([(f"✏️ {label} · {status}", f"bs:orderui:item:{key}")])
         custom_items = await orderui_custom_items()
-        custom_items.sort(key=lambda item: int(item.get("position", 0)))
-        for index, item in enumerate(custom_items):
-            key = item.get("key", "")
-            enabled = item.get("enabled", True)
-            status = "✅ ĐANG HIỆN" if enabled else "⬜ ĐANG ẨN"
-            rows.append([
-                (f"{status} · [{key}] {item.get('label', '')}", f"bs:orderui:item:{key}"),
-                ("⬆️", f"bs:orderui:move:{key}:up"),
-                ("⬇️", f"bs:orderui:move:{key}:down")
-            ])
-            rows.append([
-                ("✏️ SỬA TÊN", f"bs:orderui:rename:{key}"),
-                ("🔄 ẨN/HIỆN", f"bs:orderui:toggle:{key}"),
-                ("🗑 XÓA", f"bs:orderui:delete:{key}")
-            ])
-        rows += [[("➕ THÊM MENU MỚI", "bs:orderui:add")],
-                 [("↩️ QUAY LẠI BENI SYSTEM", "bs:home")]]
-        guide = (
-            "✅ đang hiện · ⬜ đang ẩn · 🔒 cố định\\n\\n"
-            "⬆️⬇️ đổi thứ tự · Bấm tên để sửa nội dung\\n"
-            "✏️ sửa tên / nội dung · 🗑 xóa menu tự thêm\\n"
-            "🏷 Mỗi nút có mã [code] riêng, mã giữ nguyên khi đổi tên.\\n"
-            "➕ thêm menu mới"
-        )
-        await show(call, "🧩 <b>QUẢN LÝ NÚT & NỘI DUNG ĐẶT ĐƠN</b>", guide, rows)
-
+        if group == "common":
+            for item in custom_items:
+                key = item.get("key", "")
+                rows.append([(f"🧩 [{key}] {item.get('label', '')}", f"bs:orderui:item:{key}")])
+        if group == "codegame":
+            rows.append([("🛠 QUẢN LÝ GAME / GIÁ RIÊNG", "adm_sites")])
+        rows.append([("↩️ DANH MỤC CẤU HÌNH", "bs:orderui")])
+        title = {"kmshare":"🎁 <b>CẤU HÌNH KM SHARE</b>","codegame":"🎮 <b>CẤU HÌNH CODE GAME</b>","common":"🧩 <b>NÚT & NỘI DUNG CHUNG</b>"}[group]
+        await show(call, title, "Chọn từng mục để sửa. Nội dung được xem trước và phải xác nhận trước khi lưu.", rows)
 
     @dp.callback_query(F.data.startswith("bs:orderui:toggle:"))
     async def bs_orderui_toggle(call: CallbackQuery, state: FSMContext):
